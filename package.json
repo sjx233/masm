@@ -1,0 +1,35 @@
+{
+  "name": "typescript-cli-template",
+  "version": "0.0.0",
+  "description": "Template for Node.js command-line tools in TypeScript.",
+  "keywords": [],
+  "homepage": "https://github.com/sjx233/typescript-cli-template#readme",
+  "bugs": "https://github.com/sjx233/typescript-cli-template/issues",
+  "license": "MIT",
+  "author": "sjx233",
+  "main": "lib/index.js",
+  "typings": "lib/index",
+  "bin": "./lib/cli.js",
+  "directories": {
+    "lib": "lib",
+    "test": "lib/test"
+  },
+  "repository": "github:sjx233/typescript-cli-template",
+  "scripts": {
+    "lint": "eslint --ext .js,.ts src",
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postversion": "git push && git push --tags"
+  },
+  "dependencies": {
+    "commander": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^13.7.0",
+    "@typescript-eslint/eslint-plugin": "^2.19.0",
+    "@typescript-eslint/parser": "^2.19.0",
+    "eslint": "^6.8.0",
+    "typescript": "^3.7.5"
+  },
+  "engines": {}
+}
