@@ -1,3 +1,3 @@
-# typescript-cli-template
+# masm
 
-Template for Node.js command-line tools in TypeScript.
+MineAssembly: compile WebAssembly to MCFunctions.

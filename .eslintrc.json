@@ -39,6 +39,9 @@
         }
       }
     ],
+    "@typescript-eslint/no-explicit-any": [
+      "off"
+    ],
     "linebreak-style": [
       "warn",
       "unix"

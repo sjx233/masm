@@ -1,10 +1,10 @@
 {
-  "name": "typescript-cli-template",
+  "name": "masm",
   "version": "0.0.0",
-  "description": "Template for Node.js command-line tools in TypeScript.",
+  "description": "MineAssembly: compile WebAssembly to MCFunctions.",
   "keywords": [],
-  "homepage": "https://github.com/sjx233/typescript-cli-template#readme",
-  "bugs": "https://github.com/sjx233/typescript-cli-template/issues",
+  "homepage": "https://github.com/sjx233/masm#readme",
+  "bugs": "https://github.com/sjx233/masm/issues",
   "license": "MIT",
   "author": "sjx233",
   "main": "lib/index.js",
@@ -14,22 +14,28 @@
     "lib": "lib",
     "test": "lib/test"
   },
-  "repository": "github:sjx233/typescript-cli-template",
+  "repository": "github:sjx233/masm",
   "scripts": {
     "lint": "eslint --ext .js,.ts src",
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node lib/test/test.js",
+    "preversion": "npm run build && npm test",
     "postversion": "git push && git push --tags"
   },
   "dependencies": {
-    "commander": "^4.1.1"
+    "@webassemblyjs/wasm-parser": "^1.9.0",
+    "commander": "^4.1.1",
+    "minecraft-packs": "^2.0.2",
+    "progress": "^2.0.3",
+    "resource-location": "^3.0.1"
   },
   "devDependencies": {
-    "@types/node": "^13.7.0",
-    "@typescript-eslint/eslint-plugin": "^2.19.0",
-    "@typescript-eslint/parser": "^2.19.0",
+    "@types/node": "^13.7.7",
+    "@types/progress": "^2.0.3",
+    "@typescript-eslint/eslint-plugin": "^2.21.0",
+    "@typescript-eslint/parser": "^2.21.0",
     "eslint": "^6.8.0",
-    "typescript": "^3.7.5"
+    "typescript": "^3.8.3"
   },
   "engines": {}
 }
