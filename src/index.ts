@@ -65,10 +65,10 @@ function newFunction({ namespace, funcPool }: Context): [ResourceLocation, strin
   return [new ResourceLocation(namespace, `__internal/func_pool/${index}`), funcPool[index]];
 }
 
-function addInstructions(ctx: Context, index: number, insns: any[], commands: string[], depth = 0): number {
+function addInstructions(ctx: Context, index: number, insns: any[], commands: string[], depth: number): number {
   const { namespace } = ctx;
   let minDepth = depth;
-  block: for (let i = 0, len = insns.length; i < len; i++) {
+  for (let i = 0, len = insns.length; i < len; i++) {
     const insn = insns[i];
     switch (insn.id) {
       case "nop":
@@ -81,9 +81,9 @@ function addInstructions(ctx: Context, index: number, insns: any[], commands: st
         if (shouldJump) commands.push(`scoreboard players set #br_depth ${namespace} 2147483647`);
         commands.push(`function ${subId}`);
         if (shouldJump) {
-          const [controlId, controlCommands] = newFunction(ctx);
-          commands.push(`execute unless score #br_depth ${namespace} matches ..${depth} run function ${controlId}`);
-          commands = controlCommands;
+          const [remId, remCommands] = newFunction(ctx);
+          commands.push(`execute unless score #br_depth ${namespace} matches ..${depth} run function ${remId}`);
+          commands = remCommands;
         }
         break;
       }
@@ -99,9 +99,9 @@ function addInstructions(ctx: Context, index: number, insns: any[], commands: st
         );
         commands.push(`function ${wrapId}`);
         if (subDepth <= depth && i !== len - 1) {
-          const [controlId, controlCommands] = newFunction(ctx);
-          commands.push(`execute unless score #br_depth ${namespace} matches ..${depth} run function ${controlId}`);
-          commands = controlCommands;
+          const [remId, remCommands] = newFunction(ctx);
+          commands.push(`execute unless score #br_depth ${namespace} matches ..${depth} run function ${remId}`);
+          commands = remCommands;
         }
         break;
       }
@@ -134,26 +134,26 @@ function addInstructions(ctx: Context, index: number, insns: any[], commands: st
           `execute unless score #a ${namespace} matches 0 run function ${subId}`
         );
         if (shouldJump) {
-          const [controlId, controlCommands] = newFunction(ctx);
-          commands.push(`execute unless score #br_depth ${namespace} matches ..${depth} run function ${controlId}`);
-          commands = controlCommands;
+          const [remId, remCommands] = newFunction(ctx);
+          commands.push(`execute unless score #br_depth ${namespace} matches ..${depth} run function ${remId}`);
+          commands = remCommands;
         }
         break;
       }
       case "br": {
-        const subDepth = depth - insn.args[0].value;
-        commands.push(`scoreboard players set #br_depth ${namespace} ${subDepth}`);
-        if (subDepth < minDepth) minDepth = subDepth;
-        break block;
+        const toDepth = depth - insn.args[0].value;
+        commands.push(`scoreboard players set #br_depth ${namespace} ${toDepth}`);
+        if (toDepth < minDepth) minDepth = toDepth;
+        return minDepth;
       }
       case "br_if": {
-        const subDepth = depth - insn.args[0].value;
+        const toDepth = depth - insn.args[0].value;
         commands.push(
           `execute store result score #a ${namespace} run data get storage ${namespace}:__internal stack[-1]`,
           `data remove storage ${namespace}:__internal stack[-1]`,
-          `execute unless score #a ${namespace} matches 0 run scoreboard players set #br_depth ${namespace} ${subDepth}`
+          `execute unless score #a ${namespace} matches 0 run scoreboard players set #br_depth ${namespace} ${toDepth}`
         );
-        if (subDepth < minDepth) minDepth = subDepth;
+        if (toDepth < minDepth) minDepth = toDepth;
         break;
       }
       case "return":
@@ -257,7 +257,7 @@ function addFunction(ctx: Context, index: number): void {
     commands.push(`data modify storage ${namespace}:__internal frames[-1] append from storage ${namespace}:__internal stack[-${i}]`);
   for (let i = params.length; i; i--)
     commands.push(`data remove storage ${namespace}:__internal stack[-1]`);
-  if (type === "module") addInstructions(ctx, index, body, commands);
+  if (type === "module") addInstructions(ctx, index, body, commands, 0);
   else commands.push(`function ${body}`);
   commands.push(`data remove storage ${namespace}:__internal frames[-1]`);
   pack.functions.set(new ResourceLocation(namespace, `__internal/functions/${index}`), commands);
