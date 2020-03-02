@@ -2,9 +2,35 @@ import { decode } from "@webassemblyjs/wasm-parser";
 import { DataPack } from "minecraft-packs";
 import ResourceLocation = require("resource-location");
 
+const supportedTypes = ["i32"] as const;
+type Type = typeof supportedTypes extends readonly (infer T)[] ? T : never;
+
+interface ModuleFunction {
+  type: "module";
+  params: Type[];
+  results: Type[];
+  body: any;
+}
+
+interface ImportFunction {
+  type: "import";
+  params: Type[];
+  results: Type[];
+  body: ResourceLocation;
+}
+
+type WasmFunction = ModuleFunction | ImportFunction;
+
+interface FunctionExport {
+  name: string;
+  value: number;
+}
+
 interface Context {
   pack: DataPack;
   namespace: string;
+  functions: WasmFunction[];
+  functionExports: FunctionExport[];
   funcPool: string[][];
 }
 
@@ -21,13 +47,19 @@ const binOp = new Map<string, string>([
   ["mul", "*="]
 ]);
 
-function checkType(type: string): string {
-  if (type !== "i32") throw new TypeError(`type '${type}' is unsupported`);
-  return type;
+function checkType(type: string): Type {
+  if (!supportedTypes.includes(type as Type)) throw new TypeError(`type '${type}' is unsupported`);
+  return type as Type;
 }
 
-function newFunction(ctx: Context): [ResourceLocation, string[]] {
-  const { namespace, funcPool } = ctx;
+function checkSignature(signature: any): { params: Type[]; results: Type[]; } {
+  return {
+    params: signature.params.map((param: { valtype: string; }) => checkType(param.valtype)),
+    results: signature.results.map(checkType)
+  };
+}
+
+function newFunction({ namespace, funcPool }: Context): [ResourceLocation, string[]] {
   const index = funcPool.length;
   funcPool.push([]);
   return [new ResourceLocation(namespace, `__internal/func_pool/${index}`), funcPool[index]];
@@ -217,50 +249,80 @@ function addInstructions(ctx: Context, index: number, insns: any[], commands: st
   return minDepth;
 }
 
-function addFunction(ctx: Context, index: number, params: string[], results: string[], body: any): void {
+function addFunction(ctx: Context, index: number): void {
   const { pack, namespace } = ctx;
+  const { type, params, body } = ctx.functions[index];
   const commands: string[] = [`data modify storage ${namespace}:__internal frames append value []`];
   for (let i = params.length; i; i--)
     commands.push(`data modify storage ${namespace}:__internal frames[-1] append from storage ${namespace}:__internal stack[-${i}]`);
   for (let i = params.length; i; i--)
     commands.push(`data remove storage ${namespace}:__internal stack[-1]`);
-  addInstructions(ctx, index, body, commands);
+  if (type === "module") addInstructions(ctx, index, body, commands);
+  else commands.push(`function ${body}`);
   commands.push(`data remove storage ${namespace}:__internal frames[-1]`);
   pack.functions.set(new ResourceLocation(namespace, `__internal/functions/${index}`), commands);
 }
 
-function addFunctionExport(ctx: Context, name: string, index: number): void {
+function addFunctionExport(ctx: Context, index: number): void {
   const { pack, namespace } = ctx;
+  const { name, value } = ctx.functionExports[index];
   pack.functions.set(new ResourceLocation(namespace, name), [
-    `function ${namespace}:__internal/functions/${index}`
+    `function ${namespace}:__internal/functions/${value}`
   ]);
 }
 
-export function compileTo(pack: DataPack, namespace: string, data: Uint8Array): void {
-  if (namespace.length > 16) throw new RangeError("namespace is too long");
-  const ast = decode(data, { ignoreCustomNameSection: true }).body[0].fields;
-  const ctx: Context = {
-    pack,
-    namespace,
-    funcPool: []
-  };
-  let funcIndex = 0;
+function parseWasm(ctx: Context, data: Uint8Array): void {
+  const ast = decode(data).body[0].fields;
+  console.dir(ast, { depth: null });
+  const moduleFuncs: ModuleFunction[] = [];
   for (const field of ast)
     switch (field.type) {
       case "Func":
-        addFunction(ctx, funcIndex++,
-          field.signature.params.map((param: { valtype: string; }) => checkType(param.valtype)),
-          field.signature.results.map(checkType),
-          field.body);
+        moduleFuncs.push({
+          type: "module",
+          ...checkSignature(field.signature),
+          body: field.body
+        });
+        break;
+      case "ModuleImport":
+        switch (field.descr.type) {
+          case "FuncImportDescr":
+            ctx.functions.push({
+              type: "import",
+              ...checkSignature(field.descr.signature),
+              body: new ResourceLocation(field.module, field.name)
+            });
+            break;
+        }
         break;
       case "ModuleExport":
         switch (field.descr.exportType) {
           case "Func":
-            addFunctionExport(ctx, field.name, field.descr.id.value);
+            ctx.functionExports.push({
+              name: field.name,
+              value: field.descr.id.value
+            });
             break;
         }
         break;
     }
+  ctx.functions.push(...moduleFuncs);
+}
+
+export function compileTo(pack: DataPack, namespace: string, data: Uint8Array): void {
+  if (namespace.length > 16) throw new RangeError("namespace is too long");
+  const ctx: Context = {
+    pack,
+    namespace,
+    functions: [],
+    functionExports: [],
+    funcPool: []
+  };
+  parseWasm(ctx, data);
+  for (let i = 0, len = ctx.functions.length; i < len; i++)
+    addFunction(ctx, i);
+  for (let i = 0, len = ctx.functionExports.length; i < len; i++)
+    addFunctionExport(ctx, i);
   for (let i = 0, len = ctx.funcPool.length; i < len; i++)
     pack.functions.set(new ResourceLocation(namespace, `__internal/func_pool/${i}`), ctx.funcPool[i]);
   pack.functions.set(new ResourceLocation(namespace, "__internal/init"), [
