@@ -24,16 +24,16 @@
   },
   "dependencies": {
     "@webassemblyjs/wasm-parser": "^1.9.0",
-    "commander": "^4.1.1",
+    "commander": "^5.0.0",
     "minecraft-packs": "^2.0.2",
     "progress": "^2.0.3",
     "resource-location": "^3.0.1"
   },
   "devDependencies": {
-    "@types/node": "^13.7.7",
+    "@types/node": "^13.9.1",
     "@types/progress": "^2.0.3",
-    "@typescript-eslint/eslint-plugin": "^2.21.0",
-    "@typescript-eslint/parser": "^2.21.0",
+    "@typescript-eslint/eslint-plugin": "^2.23.0",
+    "@typescript-eslint/parser": "^2.23.0",
     "eslint": "^6.8.0",
     "typescript": "^3.8.3"
   },
