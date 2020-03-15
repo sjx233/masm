@@ -15,7 +15,6 @@ commander
   .option("-o, --output <file>", "output file", "out")
   .option("-d, --pack-description <description>", "data pack description", "")
   .option("-n, --namespace <namespace>", "module namespace", "module")
-  .option("-O, --optimize", "optimize WebAssembly")
   .parse(process.argv);
 const [fileName] = commander.args;
 if (!fileName) commander.help();
