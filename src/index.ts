@@ -67,6 +67,7 @@ interface Context {
   globals: Global[];
   functionExports: FuncExport[];
   globalExports: GlobalExport[];
+  start?: number;
   funcPool: string[][];
   initCommands: string[];
 }
@@ -405,6 +406,9 @@ function parseWasm(ctx: Context, data: Uint8Array): void {
             break;
         }
         break;
+      case "Start":
+        ctx.start = field.index.value;
+        break;
     }
 }
 
@@ -430,6 +434,8 @@ export function compileTo(pack: DataPack, namespace: string, data: Uint8Array): 
     addFunctionExport(ctx, i);
   for (let i = 0, len = ctx.globalExports.length; i < len; i++)
     addGlobalExport(ctx, i);
+  if (ctx.start !== undefined)
+    ctx.initCommands.push(`function ${namespace}:__internal/funcs/${ctx.start}`);
   for (let i = 0, len = ctx.funcPool.length; i < len; i++)
     pack.functions.set(new ResourceLocation(namespace, `__internal/func_pool/${i}`), ctx.funcPool[i]);
   pack.functions.set(new ResourceLocation(namespace, "__init"), ctx.initCommands);
