@@ -15,6 +15,7 @@ commander
   .option("-o, --output <file>", "output file", "out")
   .option("-d, --pack-description <description>", "data pack description", "")
   .option("-n, --namespace <namespace>", "module namespace", "module")
+  .option("--dump", "dump WebAssembly AST")
   .parse(process.argv);
 const [fileName] = commander.args;
 if (!fileName) commander.help();
@@ -22,10 +23,12 @@ const {
   output,
   packDescription,
   namespace,
+  dump
 } = commander.opts() as {
   output: string;
   packDescription: string;
   namespace: string;
+  dump?: true;
 };
 
 function createProgressBar(action: string, total: number): ProgressBar {
@@ -41,7 +44,7 @@ function createProgressBar(action: string, total: number): ProgressBar {
 (async () => {
   const input = fs.readFileSync(fileName === "-" ? 0 : fs.openSync(fileName, "r"));
   const pack = new DataPack(packDescription);
-  compileTo(pack, namespace, input);
+  compileTo(pack, namespace, input, dump);
   const bar = createProgressBar("writing files: :id", pack.functions.size);
   await pack.write(output, (type, id) => type === "function" && bar.tick({ id }));
 })().catch(error => {

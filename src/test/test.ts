@@ -5,6 +5,7 @@ childProcess.spawn(process.argv[0], [
   "-o", "test/pack",
   "-d", "\"masm test.\"",
   "-n", "masm_test",
+  "--dump",
   "test/src.wasm"
 ], { stdio: "inherit" }).once("exit", code => {
   if (code) {

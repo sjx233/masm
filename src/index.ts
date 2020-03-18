@@ -1,5 +1,6 @@
 import { decode } from "@webassemblyjs/wasm-parser";
 import { DataPack } from "minecraft-packs";
+import { inspect } from "util";
 import ResourceLocation = require("resource-location");
 
 const supportedTypes = ["i32"] as const;
@@ -351,8 +352,9 @@ function addGlobalExport(ctx: Context, index: number): void {
   ]);
 }
 
-function parseWasm(ctx: Context, data: Uint8Array): void {
+function parseWasm(ctx: Context, data: Uint8Array, dump?: boolean): void {
   const ast = decode(data, { ignoreCustomNameSection: true }).body[0].fields;
+  if (dump) process.stderr.write(inspect(ast, { depth: null }) + "\n");
   for (const field of ast)
     switch (field.type) {
       case "Func":
@@ -412,7 +414,7 @@ function parseWasm(ctx: Context, data: Uint8Array): void {
     }
 }
 
-export function compileTo(pack: DataPack, namespace: string, data: Uint8Array): void {
+export function compileTo(pack: DataPack, namespace: string, data: Uint8Array, dump?: boolean): void {
   if (namespace.length > 16) throw new RangeError("namespace is too long");
   const ctx: Context = {
     pack,
@@ -424,7 +426,7 @@ export function compileTo(pack: DataPack, namespace: string, data: Uint8Array): 
     funcPool: [],
     initCommands: []
   };
-  parseWasm(ctx, data);
+  parseWasm(ctx, data, dump);
   ctx.initCommands.push(`data merge storage ${namespace}:__internal {globals:[${new Uint8Array(ctx.globals.length)}]}`);
   for (let i = 0, len = ctx.funcs.length; i < len; i++)
     addFunction(ctx, i);
