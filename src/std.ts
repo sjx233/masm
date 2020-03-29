@@ -11,7 +11,7 @@ export async function genStd(): Promise<DataPack> {
       `function ${buildTree({
         pack,
         id: new ResourceLocation("masm", "__internal/memory/get"),
-        childCount: 4,
+        childCount: 16,
         getLeaf(index: number) {
           return `store result score #b masm run data get storage masm:__internal memory.data[${index}]`;
         }
@@ -21,7 +21,7 @@ export async function genStd(): Promise<DataPack> {
     .set(new ResourceLocation("masm", "__internal/memory/set"), [
       `function ${buildTree({
         pack, id: new ResourceLocation("masm", "__internal/memory/set"),
-        childCount: 4,
+        childCount: 16,
         getLeaf(index: number) {
           return `store result storage masm:__internal memory.data[${index}] byte 1 run scoreboard players get #b masm`;
         }

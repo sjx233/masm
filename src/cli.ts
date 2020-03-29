@@ -3,9 +3,12 @@
 import { program } from "commander";
 import * as fs from "fs";
 import { DataPack } from "minecraft-packs";
+import { promisify } from "util";
 import { compileTo } from ".";
 import { genStd } from "./std";
 import { description, name, version } from "./version";
+
+const readFile = promisify(fs.readFile);
 
 program
   .name(name)
@@ -32,19 +35,18 @@ const {
   dump?: true;
 };
 
-function compile(): DataPack {
-  const [fileName] = program.args;
-  if (!fileName) program.help();
-  const input = fs.readFileSync(fileName === "-" ? 0 : fs.openSync(fileName, "r"));
+async function compile(): Promise<DataPack> {
+  const [filename] = program.args;
+  if (!filename) program.help();
+  const input = await readFile(filename === "-" ? 0 : filename);
   const pack = new DataPack(packDescription);
   compileTo(pack, namespace, input, dump);
   return pack;
 }
 
-(async () => {
-  const pack = std ? await genStd() : compile();
-  await pack.write(output);
-})().catch(error => {
-  process.stderr.write(`unexpected error: ${error && error.stack ? error.stack : error}\n`);
-  process.exit(1);
-});
+(std ? genStd() : compile())
+  .then(pack => pack.write(output))
+  .catch(error => {
+    process.stderr.write(`unexpected error: ${error}\n`);
+    process.exit(1);
+  });

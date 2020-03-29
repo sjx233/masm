@@ -35,12 +35,12 @@ function addMemory(ctx: Context, index: number): void {
           "execute store success score #b masm run data modify storage masm:__internal tmp set from storage masm:__internal memory.id",
           "execute store result storage masm:__internal tmp int 1 run scoreboard players operation #c masm = #a masm",
           "execute if score #b masm matches 0 store success score #b masm run data modify storage masm:__internal tmp set from storage masm:__internal memory.page",
-          "execute unless score #b masm matches 0 function #masm:__internal/memories/swap_out",
+          "execute unless score #b masm matches 0 run function #masm:__internal/memories/swap_out",
           "scoreboard players operation #a masm = #c masm",
-          `execute unless score #b masm matches 0 function ${buildTree({
+          `execute unless score #b masm matches 0 run function ${buildTree({
             pack,
             id: new ResourceLocation(namespace, `__internal/memories/${index}/swap_in`),
-            childCount: 4,
+            childCount: 16,
             getLeaf(pageIndex: number) {
               return `run data modify storage masm:__internal memory.data set from storage ${namespace}:__internal memories[${index}][${pageIndex}]`;
             }
@@ -53,7 +53,7 @@ function addMemory(ctx: Context, index: number): void {
           `function ${buildTree({
             pack,
             id: new ResourceLocation(namespace, `__internal/memories/${index}/swap_out`),
-            childCount: 4,
+            childCount: 16,
             getLeaf(pageIndex: number) {
               return `run data modify storage ${namespace}:__internal memories[${index}][${pageIndex}] set from storage masm:__internal memory.data`;
             }
