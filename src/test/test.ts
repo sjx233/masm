@@ -102,7 +102,7 @@ async function compileTest(src: string, dest: string): Promise<string> {
 async function compileTests(srcDir: string, destDir: string): Promise<string[]> {
   const names: string[] = [];
   for (const name of await fs.readdir(srcDir))
-    if (path.extname(name) === ".wast" && name === "memory_grow.wast") names.push(await compileTest(
+    if (path.extname(name) === ".wast") names.push(await compileTest(
       path.join(srcDir, name),
       path.join(destDir, path.basename(name, ".wast") + ".json")
     ));
