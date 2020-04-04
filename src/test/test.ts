@@ -94,6 +94,10 @@ const Value = {
   }
 };
 
+function formatValueArray(arr: readonly Value[]): string {
+  return `[${arr.map(Value.stringify).join(", ")}]`;
+}
+
 async function compileTest(src: string, dest: string): Promise<string> {
   await execFile("wast2json", ["-o", dest, src]);
   return dest;
@@ -136,7 +140,7 @@ async function loadModule(ctx: Context, module: string): Promise<boolean> {
     for (const [registration, namespace] of ctx.registeredModules)
       compileTo(pack, namespace, await fs.readFile(registration));
   } catch (e) {
-    process.stdout.write(`${failure}\n`);
+    process.stdout.write(`${failure}\n    ${e}\n`);
     ctx.invalidModules.add(module);
     return false;
   }
@@ -164,7 +168,8 @@ async function prepareAction(ctx: Context, action: Action): Promise<void> {
 async function popStack({ rcon }: Context): Promise<Value[]> {
   const response = await rcon.send("data get storage masm:__internal stack");
   await rcon.send("data modify storage masm:__internal stack set value []");
-  return response.slice(response.indexOf(": ") + 3, -1).split(", ").map(Value.parse);
+  const content = response.slice(response.indexOf(": ") + 3, -1);
+  return content ? content.split(", ").map(Value.parse) : [];
 }
 
 async function doAction(ctx: Context, action: Action): Promise<Value[]> {
@@ -211,7 +216,7 @@ async function runCommand(ctx: Context, command: Command): Promise<void> {
       process.stdout.write(`  running ${bold(":" + command.line)}... `);
       const actual = await doAction(ctx, action);
       if (isDeepStrictEqual(actual, expected)) process.stdout.write(`${success}\n`);
-      else process.stdout.write(`${failure}\n    expected: ${bold.green(`[${expected.map(Value.stringify).join(", ")}]`)}\n    actual: ${bold.red(`[${actual.map(Value.stringify).join(", ")}]`)}\n`);
+      else process.stdout.write(`${failure}\n    expected: ${green(formatValueArray(expected))}\n    actual: ${red(formatValueArray(actual))}\n`);
       break;
     }
   }
@@ -233,6 +238,7 @@ async function runCommand(ctx: Context, command: Command): Promise<void> {
   };
   process.stdout.write("loading standard library... ");
   await writePack("masm-std", await genStd());
+  await writePack("masm-test", new DataPack(""));
   await ctx.rcon.send("reload");
   await ctx.rcon.send("function masm:__init");
   process.stdout.write(`${success}\n`);
@@ -246,7 +252,7 @@ async function runCommand(ctx: Context, command: Command): Promise<void> {
     ctx.registeredModules.clear();
     ctx.invalidModules.clear();
   }
-  ctx.rcon.end();
+  await ctx.rcon.end();
 })().catch(error => {
   console.error(error);
   process.exit(1);

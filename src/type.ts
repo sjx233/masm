@@ -1,9 +1,8 @@
-const supportedTypes = ["i32"] as const;
-export type Type = typeof supportedTypes extends readonly (infer T)[] ? T : never;
+export type Type = "i32";
 
 export function checkType(type: string): Type {
-  if (!supportedTypes.includes(type as Type)) throw new TypeError(`type '${type}' is unsupported`);
-  return type as Type;
+  if (["i32", "s32", "u32"].includes(type)) return "i32";
+  throw new TypeError(`type '${type}' is unsupported`);
 }
 
 export function checkSignature(signature: any): { params: Type[]; results: Type[]; } {

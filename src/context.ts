@@ -62,6 +62,12 @@ interface GlobalExport {
   value: number;
 }
 
+interface DataSegment {
+  index: number;
+  offset: any;
+  init: Int8Array;
+}
+
 export interface Context {
   pack: DataPack;
   namespace: string;
@@ -71,6 +77,7 @@ export interface Context {
   funcExports: FuncExport[];
   memoryExports: MemoryExport[];
   globalExports: GlobalExport[];
+  dataSegments: DataSegment[];
   start?: number;
   funcPool: string[][];
   initCommands: string[];

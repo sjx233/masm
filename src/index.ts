@@ -32,12 +32,12 @@ function addMemory(ctx: Context, index: number): void {
       pack.functions
         .set(new ResourceLocation(namespace, `__internal/memories/${index}/swap_in`), [
           `data modify storage masm:__internal tmp set value "${namespace}:${index}"`,
-          "execute store success score #b masm run data modify storage masm:__internal tmp set from storage masm:__internal memory.id",
-          "execute store result storage masm:__internal tmp int 1 run scoreboard players operation #c masm = #a masm",
-          "execute if score #b masm matches 0 store success score #b masm run data modify storage masm:__internal tmp set from storage masm:__internal memory.page",
-          "execute unless score #b masm matches 0 run function #masm:__internal/memories/swap_out",
-          "scoreboard players operation #a masm = #c masm",
-          `execute unless score #b masm matches 0 run function ${buildTree({
+          "execute store success score #page_fault masm run data modify storage masm:__internal tmp set from storage masm:__internal memory.id",
+          "execute store result storage masm:__internal tmp int 1 run scoreboard players operation #target_page masm = #index masm",
+          "execute if score #page_fault masm matches 0 store success score #page_fault masm run data modify storage masm:__internal tmp set from storage masm:__internal memory.page",
+          "execute unless score #page_fault masm matches 0 run function #masm:__internal/memories/swap_out",
+          "scoreboard players operation #index masm = #target_page masm",
+          `execute unless score #page_fault masm matches 0 run function ${buildTree({
             pack,
             id: new ResourceLocation(namespace, `__internal/memories/${index}/swap_in`),
             childCount: 16,
@@ -46,10 +46,10 @@ function addMemory(ctx: Context, index: number): void {
             }
           }, 0, max)}`,
           `data modify storage masm:__internal memory.id set value "${namespace}:${index}"`,
-          "execute store result storage masm:__internal memory.page int 1 run scoreboard players get #a masm"
+          "execute store result storage masm:__internal memory.page int 1 run scoreboard players get #target_page masm"
         ])
         .set(new ResourceLocation(namespace, `__internal/memories/${index}/swap_out`), [
-          "execute store result score #a masm run data get storage masm:__internal memory.page",
+          "execute store result score #index masm run data get storage masm:__internal memory.page",
           `function ${buildTree({
             pack,
             id: new ResourceLocation(namespace, `__internal/memories/${index}/swap_out`),
@@ -60,21 +60,21 @@ function addMemory(ctx: Context, index: number): void {
           }, 0, max)}`
         ])
         .set(new ResourceLocation(namespace, `__internal/memories/${index}/get`), [
-          "scoreboard players operation #c masm = #a masm",
-          "scoreboard players operation #a masm /= #page_size masm",
-          `execute unless score #a masm matches 0.. run scoreboard players add #a ${pageSize}`,
+          "scoreboard players operation #target_address masm = #index masm",
+          "scoreboard players operation #index masm /= #page_size masm",
+          `execute unless score #index masm matches 0.. run scoreboard players add #index ${pageSize}`,
           `function ${namespace}:__internal/memories/${index}/swap_in`,
-          "scoreboard players operation #a masm = #c masm",
-          "scoreboard players operation #a masm %= #page_size masm",
+          "scoreboard players operation #index masm = #target_address masm",
+          "scoreboard players operation #index masm %= #page_size masm",
           "function masm:__internal/memory/get"
         ])
         .set(new ResourceLocation(namespace, `__internal/memories/${index}/set`), [
-          "scoreboard players operation #c masm = #a masm",
-          "scoreboard players operation #a masm /= #page_size masm",
-          `execute unless score #a masm matches 0.. run scoreboard players add #a ${pageSize}`,
+          "scoreboard players operation #target_address masm = #index masm",
+          "scoreboard players operation #index masm /= #page_size masm",
+          `execute unless score #index masm matches 0.. run scoreboard players add #index ${pageSize}`,
           `function ${namespace}:__internal/memories/${index}/swap_in`,
-          "scoreboard players operation #a masm = #c masm",
-          "scoreboard players operation #a masm %= #page_size masm",
+          "scoreboard players operation #index masm = #target_address masm",
+          "scoreboard players operation #index masm %= #page_size masm",
           "function masm:__internal/memory/set"
         ])
         .set(new ResourceLocation(namespace, `__internal/memories/${index}/size`), [
@@ -266,6 +266,13 @@ function parseWasm(ctx: Context, data: Uint8Array, dump?: boolean): void {
             break;
         }
         break;
+      case "Data":
+        ctx.dataSegments.push({
+          index: field.memoryIndex.value,
+          offset: field.offset,
+          init: new Int8Array(field.init.values)
+        });
+        break;
       case "Start":
         ctx.start = field.index.value;
         break;
@@ -283,6 +290,7 @@ export function compileTo(pack: DataPack, namespace: string, data: Uint8Array, d
     funcExports: [],
     memoryExports: [],
     globalExports: [],
+    dataSegments: [],
     funcPool: [],
     initCommands: []
   };
@@ -314,6 +322,19 @@ export function compileTo(pack: DataPack, namespace: string, data: Uint8Array, d
     addMemoryExport(ctx, i);
   for (let i = 0, len = ctx.globalExports.length; i < len; i++)
     addGlobalExport(ctx, i);
+  for (const { index, offset, init } of ctx.dataSegments) {
+    addInstructions(ctx, [offset], ctx.initCommands, 0);
+    ctx.initCommands.push(
+      "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+      "data remove storage masm:__internal stack[-1]"
+    );
+    for (const elem of init)
+      ctx.initCommands.push(
+        `scoreboard players set #a masm ${elem}`,
+        `function ${namespace}:__internal/memories/${index}/set`,
+        "scoreboard players add #index masm 1"
+      );
+  }
   if (ctx.start !== undefined)
     ctx.initCommands.push(`function ${namespace}:__internal/funcs/${ctx.start}`);
   for (let i = 0, len = ctx.funcPool.length; i < len; i++)

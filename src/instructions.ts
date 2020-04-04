@@ -161,25 +161,130 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
       case "set_global":
         commands.push(`function ${namespace}:__internal/globals/${insn.args[0].value}/set`);
         break;
-      case "current_memory":
-        commands.push(`function ${namespace}:__internal/memories/0/size`);
+      case "load":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          `function ${namespace}:__internal/memories/0/get`,
+          "scoreboard players operation #b masm = #a masm",
+          "scoreboard players operation #b masm %= #i8_limit masm",
+          "scoreboard players add #index masm 1",
+          `function ${namespace}:__internal/memories/0/get`,
+          "scoreboard players operation #a masm *= #i8_limit masm",
+          "scoreboard players operation #b masm += #a masm",
+          "scoreboard players add #index masm 1",
+          `function ${namespace}:__internal/memories/0/get`,
+          "scoreboard players operation #a masm *= #i16_limit masm",
+          "scoreboard players operation #b masm += #a masm",
+          "scoreboard players add #index masm 1",
+          `function ${namespace}:__internal/memories/0/get`,
+          "scoreboard players operation #a masm *= #i24_limit masm",
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm += #a masm"
+        );
         break;
-      case "grow_memory":
-        commands.push(`function ${namespace}:__internal/memories/0/grow`);
+      case "load8_s":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          `function ${namespace}:__internal/memories/0/get`,
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #a masm"
+        );
         break;
+      case "load8_u":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          `function ${namespace}:__internal/memories/0/get`,
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #a masm %= #i8_limit masm"
+        );
+        break;
+      case "load16_s":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          `function ${namespace}:__internal/memories/0/get`,
+          "scoreboard players operation #b masm = #a masm",
+          "scoreboard players operation #b masm %= #i8_limit masm",
+          "scoreboard players add #index masm 1",
+          `function ${namespace}:__internal/memories/0/get`,
+          "scoreboard players operation #a masm *= #i8_limit masm",
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm += #a masm"
+        );
+        break;
+      case "load16_u":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          `function ${namespace}:__internal/memories/0/get`,
+          "scoreboard players operation #b masm = #a masm",
+          "scoreboard players add #index masm 1",
+          `function ${namespace}:__internal/memories/0/get`,
+          "scoreboard players operation #a masm *= #i8_limit masm",
+          "scoreboard players operation #b masm += #a masm",
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm %= #i16_limit masm"
+        );
+        break;
+      case "store":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          `function ${namespace}:__internal/memories/0/set`,
+          "scoreboard players add #index masm 1",
+          "scoreboard players operation #a masm /= #i8_limit masm",
+          `function ${namespace}:__internal/memories/0/set`,
+          "scoreboard players add #index masm 1",
+          "scoreboard players operation #a masm /= #i8_limit masm",
+          `function ${namespace}:__internal/memories/0/set`,
+          "scoreboard players add #index masm 1",
+          "scoreboard players operation #a masm /= #i8_limit masm",
+          `function ${namespace}:__internal/memories/0/set`
+        );
+        break;
+      case "store8":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          `function ${namespace}:__internal/memories/0/set`
+        );
+        break;
+      case "store16":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          `function ${namespace}:__internal/memories/0/set`,
+          "scoreboard players add #index masm 1",
+          "scoreboard players operation #a masm /= #i8_limit masm",
+          `function ${namespace}:__internal/memories/0/set`
+        );
+        break;
+      // See MC-159633.
+      // case "current_memory":
+      //   commands.push(`function ${namespace}:__internal/memories/0/size`);
+      //   break;
+      // case "grow_memory":
+      //   commands.push(`function ${namespace}:__internal/memories/0/grow`);
+      //   break;
       case "const":
         checkType(insn.object);
         commands.push(`data modify storage masm:__internal stack append value ${insn.args[0].value}`);
         break;
-      case "eqz": {
+      case "eqz":
         checkType(insn.object);
         commands.push(
           "execute store result score #a masm run data get storage masm:__internal stack[-1]",
           "execute store success storage masm:__internal stack[-1] int 1 if score #a masm matches 0"
         );
         break;
-      }
-      case "ne": {
+      case "ne":
         checkType(insn.object);
         commands.push(
           "execute store result score #b masm run data get storage masm:__internal stack[-1]",
@@ -188,7 +293,6 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
           "execute store success storage masm:__internal stack[-1] int 1 unless score #a masm = #b masm"
         );
         break;
-      }
       case "eq":
       case "lt_s":
       case "gt_s":
@@ -200,6 +304,22 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
           "execute store result score #b masm run data get storage masm:__internal stack[-1]",
           "data remove storage masm:__internal stack[-1]",
           "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+          `execute store success storage masm:__internal stack[-1] int 1 if score #a masm ${op} #b masm`
+        );
+        break;
+      }
+      case "lt_u":
+      case "gt_u":
+      case "le_u":
+      case "ge_u": {
+        checkType(insn.object);
+        const op = relOp.get(insn.id);
+        commands.push(
+          "execute store result score #b masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+          "scoreboard players add #a masm -2147483648",
+          "scoreboard players add #b masm -2147483648",
           `execute store success storage masm:__internal stack[-1] int 1 if score #a masm ${op} #b masm`
         );
         break;
@@ -227,7 +347,7 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
         }
         break;
       default:
-        throw new Error(`instruction ${insn.id} is unsupported`);
+        throw new Error(`instruction '${insn.id}' is unsupported`);
     }
   }
   return minDepth;

@@ -18,7 +18,7 @@ export function buildTree(options: TreeOptions, index: number, size: number): Re
   for (let i = 0; i < childCount; i++) {
     const curSize = childSize - Number(i < middle);
     if (curSize > 0) {
-      commands.push(`execute if score #a masm matches ${curSize === 1
+      commands.push(`execute if score #index masm matches ${curSize === 1
         ? `${index} ${getLeaf(index)}`
         : `${index}..${index + (curSize - 1)} run function ${buildTree(options, index, curSize)}`}`);
       index += curSize;
