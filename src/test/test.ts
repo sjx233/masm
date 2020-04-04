@@ -59,7 +59,7 @@ interface AssertReturnCommand {
   type: "assert_return";
   line: number;
   action: Action;
-  expected: Value[];
+  expected: WasmValue[];
 }
 
 type Command = ModuleCommand | ActionCommand | RegisterCommand | AssertReturnCommand;
@@ -68,7 +68,7 @@ interface InvokeAction {
   type: "invoke";
   module?: string;
   field: string;
-  args: Value[];
+  args: WasmValue[];
 }
 
 interface GetAction {
@@ -79,20 +79,30 @@ interface GetAction {
 
 type Action = InvokeAction | GetAction;
 
-interface Value {
+interface WasmValue {
   type: string;
   value: string;
 }
 
+interface Value {
+  type: "i32";
+  value: number;
+}
+
 const Value = {
   parse(s: string): Value {
-    return { type: "i32", value: s };
+    return { type: "i32", value: parseInt(s, 10) | 0 };
   },
   stringify({ type, value }: Value): string {
     checkType(type);
-    return value;
+    return value.toString();
   }
 };
+
+function toValue({ type, value }: WasmValue): Value {
+  checkType(type);
+  return { type: "i32", value: parseInt(value, 10) | 0 };
+}
 
 function formatValueArray(arr: readonly Value[]): string {
   return `[${arr.map(Value.stringify).join(", ")}]`;
@@ -176,7 +186,7 @@ async function doAction(ctx: Context, action: Action): Promise<Value[]> {
   const { rcon } = ctx;
   switch (action.type) {
     case "invoke":
-      await rcon.send(`data modify storage masm:__internal frames set value [[${action.args.map(Value.stringify).join()}]]`);
+      await rcon.send(`data modify storage masm:__internal frames set value [[${action.args.map(val => Value.stringify(toValue(val))).join()}]]`);
       await rcon.send(`function masm_test:${action.field}`);
       await rcon.send("data remove storage masm:__internal frames[-1]");
       return await popStack(ctx);
@@ -207,14 +217,14 @@ async function runCommand(ctx: Context, command: Command): Promise<void> {
       ctx.registeredModules.set(getReferredModule(ctx, command.name), command.as);
       break;
     case "assert_return": {
-      const { action, expected } = command;
       try {
-        await prepareAction(ctx, action);
+        await prepareAction(ctx, command.action);
       } catch (e) {
         break;
       }
       process.stdout.write(`  running ${bold(":" + command.line)}... `);
-      const actual = await doAction(ctx, action);
+      const actual = await doAction(ctx, command.action);
+      const expected = command.expected.map(toValue);
       if (isDeepStrictEqual(actual, expected)) process.stdout.write(`${success}\n`);
       else process.stdout.write(`${failure}\n    expected: ${green(formatValueArray(expected))}\n    actual: ${red(formatValueArray(actual))}\n`);
       break;

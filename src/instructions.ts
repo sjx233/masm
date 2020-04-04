@@ -5,9 +5,13 @@ import ResourceLocation = require("resource-location");
 const relOp = new Map<string, string>([
   ["eq", "="],
   ["lt_s", "<"],
+  ["lt_u", "<"],
   ["gt_s", ">"],
+  ["gt_u", ">"],
   ["le_s", "<="],
-  ["ge_s", ">="]
+  ["le_u", "<="],
+  ["ge_s", ">="],
+  ["ge_u", ">="]
 ]);
 const binOp = new Map<string, string>([
   ["add", "+="],
@@ -167,18 +171,18 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
           `function ${namespace}:__internal/memories/0/get`,
           "scoreboard players operation #b masm = #a masm",
-          "scoreboard players operation #b masm %= #i8_limit masm",
+          "scoreboard players operation #b masm %= 2^8 masm",
           "scoreboard players add #index masm 1",
           `function ${namespace}:__internal/memories/0/get`,
-          "scoreboard players operation #a masm *= #i8_limit masm",
+          "scoreboard players operation #a masm *= 2^8 masm",
           "scoreboard players operation #b masm += #a masm",
           "scoreboard players add #index masm 1",
           `function ${namespace}:__internal/memories/0/get`,
-          "scoreboard players operation #a masm *= #i16_limit masm",
+          "scoreboard players operation #a masm *= 2^16 masm",
           "scoreboard players operation #b masm += #a masm",
           "scoreboard players add #index masm 1",
           `function ${namespace}:__internal/memories/0/get`,
-          "scoreboard players operation #a masm *= #i24_limit masm",
+          "scoreboard players operation #a masm *= 2^24 masm",
           "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm += #a masm"
         );
         break;
@@ -195,7 +199,7 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
         commands.push(
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
           `function ${namespace}:__internal/memories/0/get`,
-          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #a masm %= #i8_limit masm"
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #a masm %= 2^8 masm"
         );
         break;
       case "load16_s":
@@ -204,10 +208,10 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
           `function ${namespace}:__internal/memories/0/get`,
           "scoreboard players operation #b masm = #a masm",
-          "scoreboard players operation #b masm %= #i8_limit masm",
+          "scoreboard players operation #b masm %= 2^8 masm",
           "scoreboard players add #index masm 1",
           `function ${namespace}:__internal/memories/0/get`,
-          "scoreboard players operation #a masm *= #i8_limit masm",
+          "scoreboard players operation #a masm *= 2^8 masm",
           "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm += #a masm"
         );
         break;
@@ -219,9 +223,9 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
           "scoreboard players operation #b masm = #a masm",
           "scoreboard players add #index masm 1",
           `function ${namespace}:__internal/memories/0/get`,
-          "scoreboard players operation #a masm *= #i8_limit masm",
+          "scoreboard players operation #a masm *= 2^8 masm",
           "scoreboard players operation #b masm += #a masm",
-          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm %= #i16_limit masm"
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm %= 2^16 masm"
         );
         break;
       case "store":
@@ -233,13 +237,13 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
           "data remove storage masm:__internal stack[-1]",
           `function ${namespace}:__internal/memories/0/set`,
           "scoreboard players add #index masm 1",
-          "scoreboard players operation #a masm /= #i8_limit masm",
+          "scoreboard players operation #a masm /= 2^8 masm",
           `function ${namespace}:__internal/memories/0/set`,
           "scoreboard players add #index masm 1",
-          "scoreboard players operation #a masm /= #i8_limit masm",
+          "scoreboard players operation #a masm /= 2^8 masm",
           `function ${namespace}:__internal/memories/0/set`,
           "scoreboard players add #index masm 1",
-          "scoreboard players operation #a masm /= #i8_limit masm",
+          "scoreboard players operation #a masm /= 2^8 masm",
           `function ${namespace}:__internal/memories/0/set`
         );
         break;
@@ -262,7 +266,7 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
           "data remove storage masm:__internal stack[-1]",
           `function ${namespace}:__internal/memories/0/set`,
           "scoreboard players add #index masm 1",
-          "scoreboard players operation #a masm /= #i8_limit masm",
+          "scoreboard players operation #a masm /= 2^8 masm",
           `function ${namespace}:__internal/memories/0/set`
         );
         break;
@@ -318,12 +322,22 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
           "execute store result score #b masm run data get storage masm:__internal stack[-1]",
           "data remove storage masm:__internal stack[-1]",
           "execute store result score #a masm run data get storage masm:__internal stack[-1]",
-          "scoreboard players add #a masm -2147483648",
-          "scoreboard players add #b masm -2147483648",
+          "scoreboard players operation #a masm += 2^31 masm",
+          "scoreboard players operation #b masm += 2^31 masm",
           `execute store success storage masm:__internal stack[-1] int 1 if score #a masm ${op} #b masm`
         );
         break;
       }
+      case "clz":
+      case "ctz":
+      case "popcnt":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+          `function masm:__internal/${insn.id}`,
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #b masm"
+        );
+        break;
       case "add":
       case "sub":
       case "mul": {
@@ -338,6 +352,36 @@ export function addInstructions(ctx: Context, insns: any[], commands: string[], 
         );
         break;
       }
+      case "div_s":
+      case "div_u":
+      case "rem_s":
+      case "rem_u":
+      case "and":
+      case "or":
+      case "xor":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #b masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+          `function masm:__internal/${insn.id}`,
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #c masm"
+        );
+        break;
+      case "shl":
+      case "shr_s":
+      case "shr_u":
+      case "rotl":
+      case "rotr":
+        checkType(insn.object);
+        commands.push(
+          "execute store result score #b masm run data get storage masm:__internal stack[-1]",
+          "data remove storage masm:__internal stack[-1]",
+          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+          `function masm:__internal/${insn.id}`,
+          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #a masm"
+        );
+        break;
       case "end":
         break;
       case "local":
