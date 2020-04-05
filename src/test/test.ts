@@ -113,14 +113,15 @@ async function compileTest(src: string, dest: string): Promise<string> {
   return dest;
 }
 
-async function compileTests(srcDir: string, destDir: string): Promise<string[]> {
-  const names: string[] = [];
-  for (const name of await fs.readdir(srcDir))
-    if (path.extname(name) === ".wast") names.push(await compileTest(
-      path.join(srcDir, name),
-      path.join(destDir, path.basename(name, ".wast") + ".json")
-    ));
-  return names;
+async function compileTests(srcDir: string, destDir: string, srcFiles?: string[]): Promise<string[]> {
+  const destFiles: string[] = [];
+  if (!srcFiles) srcFiles = (await fs.readdir(srcDir)).filter(name => path.extname(name) === ".wast");
+  for (const srcFile of srcFiles) {
+    const destFile = path.basename(srcFile, ".wast") + ".json";
+    await compileTest(path.join(srcDir, srcFile), path.join(destDir, destFile));
+    destFiles.push(destFile);
+  }
+  return destFiles;
 }
 
 function writePack(name: string, pack: DataPack): Promise<void> {
@@ -226,7 +227,7 @@ async function runCommand(ctx: Context, command: Command): Promise<void> {
       const actual = await doAction(ctx, command.action);
       const expected = command.expected.map(toValue);
       if (isDeepStrictEqual(actual, expected)) process.stdout.write(`${success}\n`);
-      else process.stdout.write(`${failure}\n    expected: ${green(formatValueArray(expected))}\n    actual: ${red(formatValueArray(actual))}\n`);
+      else process.stdout.write(`${failure}\n    expected: ${bold.green(formatValueArray(expected))}\n    actual: ${bold.red(formatValueArray(actual))}\n`);
       break;
     }
   }
@@ -235,7 +236,8 @@ async function runCommand(ctx: Context, command: Command): Promise<void> {
 (async () => {
   process.chdir(path.resolve(__dirname, "../../test"));
   process.stdout.write("compiling tests... ");
-  const tests = await compileTests("../testsuite", ".");
+  const filenames = process.argv.slice(2);
+  const tests = await compileTests("../testsuite", ".", filenames.length ? filenames : undefined);
   process.stdout.write(`${success}\n`);
   const ctx: Context = {
     rcon: await connectRcon(),

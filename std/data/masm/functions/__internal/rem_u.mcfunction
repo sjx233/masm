@@ -1,4 +1,4 @@
-scoreboard players operation #c masm = #a masm
-scoreboard players operation #a masm %= #b masm
-scoreboard players operation #c masm /= #b masm
-execute unless score #c masm matches 0.. unless score #a masm matches 0 run scoreboard players add #c masm 1
+scoreboard players operation #r0 masm = #a masm
+scoreboard players operation #r1 masm = #b masm
+function masm:__internal/divmod_u
+scoreboard players operation #c masm = #r1 masm
