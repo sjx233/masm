@@ -2,7 +2,7 @@ import { decode } from "@webassemblyjs/wasm-parser";
 import { DataPack } from "minecraft-packs";
 import { inspect } from "util";
 import { Context } from "./context";
-import { addInstructions } from "./instructions";
+import { addInsns } from "./instructions";
 import { checkSignature, checkType } from "./type";
 import { buildTree, fillArray } from "./util";
 import ResourceLocation = require("resource-location");
@@ -11,7 +11,7 @@ function addFunction(ctx: Context, index: number): void {
   const { pack, namespace } = ctx;
   const func = ctx.funcs[index];
   const commands: string[] = [];
-  if (func.type === "module") addInstructions(ctx, func.body, commands, 0);
+  if (func.type === "module") addInsns(ctx, commands, func.body, func.results.length);
   else commands.push(`function ${func.id}`);
   pack.functions.set(new ResourceLocation(namespace, `__internal/funcs/${index}`), commands);
 }
@@ -135,7 +135,7 @@ function addGlobal(ctx: Context, index: number): void {
   const global = ctx.globals[index];
   if (global.type === "module") {
     const { init } = global;
-    addInstructions(ctx, init, ctx.initCommands, 0);
+    addInsns(ctx, ctx.initCommands, init, 1);
     ctx.initCommands.push(`function ${namespace}:__internal/globals/${index}/set`);
     pack.functions
       .set(new ResourceLocation(namespace, `__internal/globals/${index}/get`), [
@@ -310,20 +310,20 @@ export function compileTo(pack: DataPack, namespace: string, data: Uint8Array, d
   pack.tags.set(new ResourceLocation("masm", "__internal/memories/swap_out"), {
     values: [`${namespace}:__internal/memories/swap_out`]
   });
-  for (let i = 0, len = ctx.funcs.length; i < len; i++)
-    addFunction(ctx, i);
   for (let i = 0, len = ctx.memories.length; i < len; i++)
     addMemory(ctx, i);
   for (let i = 0, len = ctx.globals.length; i < len; i++)
     addGlobal(ctx, i);
-  for (let i = 0, len = ctx.funcExports.length; i < len; i++)
-    addFuncExport(ctx, i);
+  for (let i = 0, len = ctx.funcs.length; i < len; i++)
+    addFunction(ctx, i);
   for (let i = 0, len = ctx.memoryExports.length; i < len; i++)
     addMemoryExport(ctx, i);
   for (let i = 0, len = ctx.globalExports.length; i < len; i++)
     addGlobalExport(ctx, i);
+  for (let i = 0, len = ctx.funcExports.length; i < len; i++)
+    addFuncExport(ctx, i);
   for (const { index, offset, init } of ctx.dataSegments) {
-    addInstructions(ctx, [offset], ctx.initCommands, 0);
+    addInsns(ctx, ctx.initCommands, [offset], 1);
     ctx.initCommands.push(
       "execute store result score #index masm run data get storage masm:__internal stack[-1]",
       "data remove storage masm:__internal stack[-1]"

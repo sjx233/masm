@@ -82,3 +82,13 @@ export interface Context {
   funcPool: string[][];
   initCommands: string[];
 }
+
+export interface Block {
+  results: Type[];
+  insns: any[];
+}
+
+export interface Label {
+  index: number;
+  arity: number;
+}
