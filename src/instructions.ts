@@ -120,9 +120,11 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
           const needJump = subDepth <= depth;
           if (needJump) commands.push("scoreboard players set #br_depth masm 2147483647");
           commands.push(
-            "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+            "data modify storage masm:__internal conditions append from storage masm:__internal stack[-1]",
             "data remove storage masm:__internal stack[-1]",
-            `execute unless score #a masm matches 0 run function ${subId}`
+            "execute store result score #a masm run data get storage masm:__internal conditions[-1]",
+            `execute unless score #a masm matches 0 run function ${subId}`,
+            "data remove storage masm:__internal conditions[-1]"
           );
           if (needJump) {
             const [remId, remCommands] = newFunction(ctx);
