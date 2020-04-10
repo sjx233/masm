@@ -193,9 +193,9 @@ function addGlobalExport(ctx: Context, index: number): void {
 }
 
 function parseWasm(ctx: Context, data: Uint8Array, dump?: boolean): void {
-  const ast = decode(data, { ignoreCustomNameSection: true }).body[0].fields;
+  const ast = decode(data, { ignoreCustomNameSection: true });
   if (dump) process.stderr.write(inspect(ast, { depth: null }) + "\n");
-  for (const field of ast)
+  for (const field of ast.body[0].fields)
     switch (field.type) {
       case "Func":
         ctx.funcs.push({
