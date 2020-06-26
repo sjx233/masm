@@ -1,94 +1,80 @@
 import { DataPack } from "minecraft-packs";
-import { Type } from "./type";
+import { Data, Expr, FuncIdx, FuncType, GlobalIdx, GlobalType, LabelIdx, MemIdx, MemType, Start, TypeIdx, ValType } from "./parser";
 import ResourceLocation = require("resource-location");
 
 interface ModuleFunc {
   type: "module";
-  params: Type[];
-  results: Type[];
-  body: any;
+  funcType: TypeIdx;
+  locals: ValType[];
+  body: Expr;
 }
 
 interface ImportFunc {
   type: "import";
-  params: Type[];
-  results: Type[];
+  funcType: TypeIdx;
   id: ResourceLocation;
 }
 
 type Func = ModuleFunc | ImportFunc;
 
-interface ModuleMemory {
+interface ModuleMem {
   type: "module";
-  min: number;
-  max: number;
+  memType: MemType;
 }
 
-interface ImportMemory {
+interface ImportMem {
   type: "import";
   id: ResourceLocation;
 }
 
-type Memory = ModuleMemory | ImportMemory;
+type Mem = ModuleMem | ImportMem;
 
 interface ModuleGlobal {
   type: "module";
-  valueType: Type;
-  mutability: string;
-  init: any;
+  globalType: GlobalType;
+  init: Expr;
 }
 
 interface ImportGlobal {
   type: "import";
-  valueType: Type;
-  mutability: string;
+  globalType: GlobalType;
   id: ResourceLocation;
 }
 
 type Global = ModuleGlobal | ImportGlobal;
 
-interface FuncExport {
+export interface FuncExport {
   name: string;
-  value: number;
+  func: FuncIdx;
 }
 
-interface MemoryExport {
+export interface MemExport {
   name: string;
-  value: number;
+  mem: MemIdx;
 }
 
-interface GlobalExport {
+export interface GlobalExport {
   name: string;
-  value: number;
-}
-
-interface DataSegment {
-  index: number;
-  offset: any;
-  init: Int8Array;
+  global: GlobalIdx;
 }
 
 export interface Context {
   pack: DataPack;
   namespace: string;
+  types: FuncType[];
   funcs: Func[];
-  memories: Memory[];
+  mems: Mem[];
   globals: Global[];
   funcExports: FuncExport[];
-  memoryExports: MemoryExport[];
+  memExports: MemExport[];
   globalExports: GlobalExport[];
-  dataSegments: DataSegment[];
-  start?: number;
+  data: Data[];
+  start: Start | null;
   funcPool: string[][];
   initCommands: string[];
 }
 
-export interface Block {
-  results: Type[];
-  insns: any[];
-}
-
 export interface Label {
-  index: number;
+  index: LabelIdx;
   arity: number;
 }

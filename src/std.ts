@@ -7,22 +7,22 @@ import ResourceLocation = require("resource-location");
 export async function genStd(): Promise<DataPack> {
   const pack = await Pack.read(path.resolve(__dirname, "../std"), "data") as DataPack;
   pack.functions
-    .set(new ResourceLocation("masm", "__internal/memory/get"), [
+    .set(new ResourceLocation("masm", "__internal/mem/get"), [
       `function ${buildTree({
         pack,
-        id: new ResourceLocation("masm", "__internal/memory/get"),
+        id: new ResourceLocation("masm", "__internal/mem/get"),
         childCount: 16,
         getLeaf(index: number) {
-          return `store result score #a masm run data get storage masm:__internal memory.data[${index}]`;
+          return `store result score #a masm run data get storage masm:__internal mem.data[${index}]`;
         }
       }, 0, pageSize)}`
     ])
-    .set(new ResourceLocation("masm", "__internal/memory/set"), [
+    .set(new ResourceLocation("masm", "__internal/mem/set"), [
       `function ${buildTree({
-        pack, id: new ResourceLocation("masm", "__internal/memory/set"),
+        pack, id: new ResourceLocation("masm", "__internal/mem/set"),
         childCount: 16,
         getLeaf(index: number) {
-          return `store result storage masm:__internal memory.data[${index}] byte 1 run scoreboard players get #a masm`;
+          return `store result storage masm:__internal mem.data[${index}] byte 1 run scoreboard players get #a masm`;
         }
       }, 0, pageSize)}`
     ]);

@@ -1,23 +1,6 @@
 import { Context, Label } from "./context";
-import { checkType, Type } from "./type";
+import { BlockType, FuncType, Instr, LabelIdx } from "./parser";
 import ResourceLocation = require("resource-location");
-
-const relOp = new Map<string, string>([
-  ["eq", "="],
-  ["lt_s", "<"],
-  ["lt_u", "<"],
-  ["gt_s", ">"],
-  ["gt_u", ">"],
-  ["le_s", "<="],
-  ["le_u", "<="],
-  ["ge_s", ">="],
-  ["ge_u", ">="]
-]);
-const binOp = new Map<string, string>([
-  ["add", "+="],
-  ["sub", "-="],
-  ["mul", "*="]
-]);
 
 function newFunction({ namespace, funcPool }: Context): [ResourceLocation, string[]] {
   const index = funcPool.length;
@@ -25,14 +8,13 @@ function newFunction({ namespace, funcPool }: Context): [ResourceLocation, strin
   return [new ResourceLocation(namespace, `__internal/func_pool/${index}`), funcPool[index]];
 }
 
-function singleType(type: string | null): Type[] {
-  return type ? [checkType(type)] : [];
+function resolveType(ctx: Context, type: BlockType): FuncType {
+  if (type === null) return { params: [], results: [] };
+  if (typeof type === "string") return { params: [], results: [type] };
+  return ctx.types[type];
 }
 
-function br(index: number, commands: string[], depth: number, stackSize: number, labels: Label[]): {
-  toDepth: number;
-  newSize: number;
-} {
+function br(index: LabelIdx, commands: string[], depth: number, stackSize: number, labels: Label[]): { toDepth: number; newSize: number; } {
   const toDepth = depth - index;
   const label = labels[labels.length - 1 - index];
   const newSize = label.index + label.arity;
@@ -44,19 +26,71 @@ function br(index: number, commands: string[], depth: number, stackSize: number,
   return { toDepth, newSize };
 }
 
-function addBlock(ctx: Context, commands: string[], insns: any[], depth: number, stackSize: number, resultCount: number, labels: Label[]): number {
+function srelop(op: string, commands: string[], stackSize: number): number {
+  commands.push(
+    "execute store result score #b masm run data get storage masm:__internal stack[-1]",
+    "data remove storage masm:__internal stack[-1]",
+    "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+    `execute store success storage masm:__internal stack[-1] int 1 if score #a masm ${op} #b masm`
+  );
+  return --stackSize;
+}
+
+function urelop(op: string, commands: string[], stackSize: number): number {
+  commands.push(
+    "execute store result score #b masm run data get storage masm:__internal stack[-1]",
+    "data remove storage masm:__internal stack[-1]",
+    "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+    "scoreboard players operation #a masm += 2^31 masm",
+    "scoreboard players operation #b masm += 2^31 masm",
+    `execute store success storage masm:__internal stack[-1] int 1 if score #a masm ${op} #b masm`
+  );
+  return --stackSize;
+}
+
+function iunop(op: string, commands: string[]): void {
+  commands.push(
+    "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+    `function masm:__internal/${op}`,
+    "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #b masm"
+  );
+}
+
+function ibinop(op: string, target: string, commands: string[], stackSize: number): number {
+  commands.push(
+    "execute store result score #b masm run data get storage masm:__internal stack[-1]",
+    "data remove storage masm:__internal stack[-1]",
+    "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+    `function masm:__internal/${op}`,
+    `execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #${target} masm`
+  );
+  return --stackSize;
+}
+
+function ibinops(op: string, commands: string[], stackSize: number): number {
+  commands.push(
+    "execute store result score #b masm run data get storage masm:__internal stack[-1]",
+    "data remove storage masm:__internal stack[-1]",
+    "execute store result score #a masm run data get storage masm:__internal stack[-1]",
+    `scoreboard players operation #a masm ${op} #b masm`,
+    "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #a masm"
+  );
+  return --stackSize;
+}
+
+function addBlock(ctx: Context, commands: string[], instrs: Instr[], depth: number, stackSize: number, resultCount: number, labels: Label[]): number {
   const { namespace } = ctx;
   labels.push({ index: stackSize, arity: resultCount });
   let minDepth = depth;
-  block: for (let i = 0, len = insns.length; i < len; i++) {
-    const insn = insns[i];
-    switch (insn.id) {
+  block: for (let i = 0, len = instrs.length; i < len; i++) {
+    const instr = instrs[i];
+    switch (instr.type) {
       case "nop":
         break;
       case "block": {
-        const results = singleType(insn.result);
+        const { results } = resolveType(ctx, instr.blockType);
         const [subId, subCommands] = newFunction(ctx);
-        const subDepth = addBlock(ctx, subCommands, insn.instr, depth + 1, stackSize, results.length, labels);
+        const subDepth = addBlock(ctx, subCommands, instr.body, depth + 1, stackSize, results.length, labels);
         if (subDepth < minDepth) minDepth = subDepth;
         const needJump = subDepth <= depth;
         if (needJump) commands.push("scoreboard players set #br_depth masm 2147483647");
@@ -71,9 +105,9 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
         break;
       }
       case "loop": {
-        const results = singleType(insn.result);
+        const { results } = resolveType(ctx, instr.blockType);
         const [subId, subCommands] = newFunction(ctx);
-        const subDepth = addBlock(ctx, subCommands, insn.instr, depth + 1, stackSize, results.length, labels);
+        const subDepth = addBlock(ctx, subCommands, instr.body, depth + 1, stackSize, results.length, labels);
         if (subDepth < minDepth) minDepth = subDepth;
         const [wrapId, wrapCommands] = newFunction(ctx);
         wrapCommands.push(
@@ -92,13 +126,13 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
       }
       case "if": {
         stackSize--;
-        const results = singleType(insn.result);
+        const { results } = resolveType(ctx, instr.blockType);
         const [subId, subCommands] = newFunction(ctx);
-        const subDepth = addBlock(ctx, subCommands, insn.consequent, depth + 1, stackSize, results.length, labels);
+        const subDepth = addBlock(ctx, subCommands, instr.consequent, depth + 1, stackSize, results.length, labels);
         if (subDepth < minDepth) minDepth = subDepth;
-        if (insn.alternate?.length) {
+        if (instr.alternative.length) {
           const [altId, altCommands] = newFunction(ctx);
-          const altDepth = addBlock(ctx, altCommands, insn.alternate, depth + 1, stackSize, results.length, labels);
+          const altDepth = addBlock(ctx, altCommands, instr.alternative, depth + 1, stackSize, results.length, labels);
           if (altDepth < minDepth) minDepth = altDepth;
           const needJump = subDepth <= depth || altDepth <= depth;
           if (needJump) commands.push("scoreboard players set #br_depth masm 2147483647");
@@ -136,7 +170,7 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
         break;
       }
       case "br": {
-        const { toDepth, newSize } = br(insn.args[0].value, commands, depth, stackSize, labels);
+        const { toDepth, newSize } = br(instr.label, commands, depth, stackSize, labels);
         if (toDepth < minDepth) minDepth = toDepth;
         stackSize = newSize;
         break block;
@@ -144,7 +178,7 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
       case "br_if": {
         stackSize--;
         const [subId, subCommands] = newFunction(ctx);
-        const { toDepth } = br(insn.args[0].value, subCommands, depth, stackSize, labels);
+        const { toDepth } = br(instr.label, subCommands, depth, stackSize, labels);
         if (toDepth < minDepth) minDepth = toDepth;
         const [remId, remCommands] = newFunction(ctx);
         commands.push(
@@ -156,26 +190,31 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
         commands = remCommands;
         break;
       }
-      case "br_table":
+      case "br_table": {
         stackSize--;
         commands.push(
           "execute store result score #a masm run data get storage masm:__internal stack[-1]",
           "data remove storage masm:__internal stack[-1]"
         );
-        for (let i = 0, len = insn.args.length - 1; i <= len; i++) {
+        const length = instr.labels.length;
+        for (let i = 0; i < length; i++) {
           const [subId, subCommands] = newFunction(ctx);
-          const { toDepth } = br(insn.args[i].value, subCommands, depth, stackSize, labels);
+          const { toDepth } = br(instr.labels[i], subCommands, depth, stackSize, labels);
           if (toDepth < minDepth) minDepth = toDepth;
-          commands.push(`execute if score #a masm matches ${i === len ? `${i}..` : i} run function ${subId}`);
+          commands.push(`execute if score #a masm matches ${i} run function ${subId}`);
         }
+        const [subId, subCommands] = newFunction(ctx);
+        const { toDepth } = br(instr.default, subCommands, depth, stackSize, labels);
+        if (toDepth < minDepth) minDepth = toDepth;
+        commands.push(`execute if score #a masm matches ${i}.. run function ${subId}`);
         break block;
+      }
       case "return":
         br(depth, commands, depth, stackSize, labels);
         minDepth = 0;
         break block;
       case "call": {
-        const index = insn.index.value;
-        const { params, results } = ctx.funcs[index];
+        const { params, results } = ctx.types[ctx.funcs[instr.func].funcType];
         stackSize -= params.length;
         stackSize += results.length;
         commands.push("data modify storage masm:__internal frames append value []");
@@ -184,7 +223,7 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
         for (let i = params.length; i; i--)
           commands.push("data remove storage masm:__internal stack[-1]");
         commands.push(
-          `function ${namespace}:__internal/funcs/${index}`,
+          `function ${namespace}:__internal/funcs/${instr.func}`,
           "data remove storage masm:__internal frames[-1]"
         );
         break;
@@ -202,158 +241,158 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
           "execute if score #a masm matches 0 run data remove storage masm:__internal stack[-2]"
         );
         break;
-      case "get_local":
+      case "local.get":
         stackSize++;
-        commands.push(`data modify storage masm:__internal stack append from storage masm:__internal frames[-1][${insn.args[0].value}]`);
+        commands.push(`data modify storage masm:__internal stack append from storage masm:__internal frames[-1][${instr.local}]`);
         break;
-      case "set_local":
+      case "local.set":
         stackSize--;
         commands.push(
-          `data modify storage masm:__internal frames[-1][${insn.args[0].value}] set from storage masm:__internal stack[-1]`,
+          `data modify storage masm:__internal frames[-1][${instr.local}] set from storage masm:__internal stack[-1]`,
           "data remove storage masm:__internal stack[-1]"
         );
         break;
-      case "tee_local":
-        commands.push(`data modify storage masm:__internal frames[-1][${insn.args[0].value}] set from storage masm:__internal stack[-1]`);
+      case "local.tee":
+        commands.push(`data modify storage masm:__internal frames[-1][${instr.local}] set from storage masm:__internal stack[-1]`);
         break;
-      case "get_global":
+      case "global.get":
         stackSize++;
-        commands.push(`function ${namespace}:__internal/globals/${insn.args[0].value}/get`);
+        commands.push(`function ${namespace}:__internal/globals/${instr.global}/get`);
         break;
-      case "set_global":
+      case "global.set":
         stackSize--;
-        commands.push(`function ${namespace}:__internal/globals/${insn.args[0].value}/set`);
+        commands.push(`function ${namespace}:__internal/globals/${instr.global}/set`);
         break;
-      case "load":
-        checkType(insn.object);
+      case "i32.load":
         commands.push(
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
-          `function ${namespace}:__internal/memories/0/get`,
+          `scoreboard players add #index masm ${instr.mem.offset}`,
+          `function ${namespace}:__internal/mems/0/get`,
           "scoreboard players operation #b masm = #a masm",
           "scoreboard players operation #b masm %= 2^8 masm",
           "scoreboard players add #index masm 1",
-          `function ${namespace}:__internal/memories/0/get`,
+          `function ${namespace}:__internal/mems/0/get`,
           "scoreboard players operation #a masm *= 2^8 masm",
           "scoreboard players operation #b masm += #a masm",
           "scoreboard players add #index masm 1",
-          `function ${namespace}:__internal/memories/0/get`,
+          `function ${namespace}:__internal/mems/0/get`,
           "scoreboard players operation #a masm *= 2^16 masm",
           "scoreboard players operation #b masm += #a masm",
           "scoreboard players add #index masm 1",
-          `function ${namespace}:__internal/memories/0/get`,
+          `function ${namespace}:__internal/mems/0/get`,
           "scoreboard players operation #a masm *= 2^24 masm",
           "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm += #a masm"
         );
         break;
-      case "load8_s":
-        checkType(insn.object);
+      case "i32.load8_s":
         commands.push(
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
-          `function ${namespace}:__internal/memories/0/get`,
+          `scoreboard players add #index masm ${instr.mem.offset}`,
+          `function ${namespace}:__internal/mems/0/get`,
           "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #a masm"
         );
         break;
-      case "load8_u":
-        checkType(insn.object);
+      case "i32.load8_u":
         commands.push(
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
-          `function ${namespace}:__internal/memories/0/get`,
+          `scoreboard players add #index masm ${instr.mem.offset}`,
+          `function ${namespace}:__internal/mems/0/get`,
           "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #a masm %= 2^8 masm"
         );
         break;
-      case "load16_s":
-        checkType(insn.object);
+      case "i32.load16_s":
         commands.push(
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
-          `function ${namespace}:__internal/memories/0/get`,
+          `scoreboard players add #index masm ${instr.mem.offset}`,
+          `function ${namespace}:__internal/mems/0/get`,
           "scoreboard players operation #b masm = #a masm",
           "scoreboard players operation #b masm %= 2^8 masm",
           "scoreboard players add #index masm 1",
-          `function ${namespace}:__internal/memories/0/get`,
+          `function ${namespace}:__internal/mems/0/get`,
           "scoreboard players operation #a masm *= 2^8 masm",
           "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm += #a masm"
         );
         break;
-      case "load16_u":
-        checkType(insn.object);
+      case "i32.load16_u":
         commands.push(
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
-          `function ${namespace}:__internal/memories/0/get`,
+          `scoreboard players add #index masm ${instr.mem.offset}`,
+          `function ${namespace}:__internal/mems/0/get`,
           "scoreboard players operation #b masm = #a masm",
           "scoreboard players add #index masm 1",
-          `function ${namespace}:__internal/memories/0/get`,
+          `function ${namespace}:__internal/mems/0/get`,
           "scoreboard players operation #a masm *= 2^8 masm",
           "scoreboard players operation #b masm += #a masm",
           "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players operation #b masm %= 2^16 masm"
         );
         break;
-      case "store":
-        checkType(insn.object);
+      case "i32.store":
         stackSize -= 2;
         commands.push(
           "execute store result score #a masm run data get storage masm:__internal stack[-1]",
           "data remove storage masm:__internal stack[-1]",
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          `scoreboard players add #index masm ${instr.mem.offset}`,
           "data remove storage masm:__internal stack[-1]",
-          `function ${namespace}:__internal/memories/0/set`,
+          `function ${namespace}:__internal/mems/0/set`,
           "scoreboard players add #index masm 1",
           "scoreboard players operation #a masm /= 2^8 masm",
-          `function ${namespace}:__internal/memories/0/set`,
+          `function ${namespace}:__internal/mems/0/set`,
           "scoreboard players add #index masm 1",
           "scoreboard players operation #a masm /= 2^8 masm",
-          `function ${namespace}:__internal/memories/0/set`,
+          `function ${namespace}:__internal/mems/0/set`,
           "scoreboard players add #index masm 1",
           "scoreboard players operation #a masm /= 2^8 masm",
-          `function ${namespace}:__internal/memories/0/set`
+          `function ${namespace}:__internal/mems/0/set`
         );
         break;
-      case "store8":
-        checkType(insn.object);
+      case "i32.store8":
         stackSize -= 2;
         commands.push(
           "execute store result score #a masm run data get storage masm:__internal stack[-1]",
           "data remove storage masm:__internal stack[-1]",
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          `scoreboard players add #index masm ${instr.mem.offset}`,
           "data remove storage masm:__internal stack[-1]",
-          `function ${namespace}:__internal/memories/0/set`
+          `function ${namespace}:__internal/mems/0/set`
         );
         break;
-      case "store16":
-        checkType(insn.object);
+      case "i32.store16":
         stackSize -= 2;
         commands.push(
           "execute store result score #a masm run data get storage masm:__internal stack[-1]",
           "data remove storage masm:__internal stack[-1]",
           "execute store result score #index masm run data get storage masm:__internal stack[-1]",
+          `scoreboard players add #index masm ${instr.mem.offset}`,
           "data remove storage masm:__internal stack[-1]",
-          `function ${namespace}:__internal/memories/0/set`,
+          `function ${namespace}:__internal/mems/0/set`,
           "scoreboard players add #index masm 1",
           "scoreboard players operation #a masm /= 2^8 masm",
-          `function ${namespace}:__internal/memories/0/set`
+          `function ${namespace}:__internal/mems/0/set`
         );
         break;
-      // See MC-159633.
-      // case "current_memory":
+      // See MC-159633
+      // case "memory.size":
       //   stackSize++;
-      //   commands.push(`function ${namespace}:__internal/memories/0/size`);
+      //   commands.push(`function ${namespace}:__internal/mems/0/size`);
       //   break;
-      // case "grow_memory":
-      //   commands.push(`function ${namespace}:__internal/memories/0/grow`);
+      // case "memory.grow":
+      //   commands.push(`function ${namespace}:__internal/mems/0/grow`);
       //   break;
-      case "const":
-        checkType(insn.object);
+      case "i32.const":
         stackSize++;
-        commands.push(`data modify storage masm:__internal stack append value ${insn.args[0].value}`);
+        commands.push(`data modify storage masm:__internal stack append value ${instr.value}`);
         break;
-      case "eqz":
-        checkType(insn.object);
+      case "i32.eqz":
         commands.push(
           "execute store result score #a masm run data get storage masm:__internal stack[-1]",
           "execute store success storage masm:__internal stack[-1] int 1 if score #a masm matches 0"
         );
         break;
-      case "ne":
-        checkType(insn.object);
+      case "i32.eq":
+        stackSize = srelop("=", commands, stackSize);
+        break;
+      case "i32.ne":
         stackSize--;
         commands.push(
           "execute store result score #b masm run data get storage masm:__internal stack[-1]",
@@ -362,112 +401,92 @@ function addBlock(ctx: Context, commands: string[], insns: any[], depth: number,
           "execute store success storage masm:__internal stack[-1] int 1 unless score #a masm = #b masm"
         );
         break;
-      case "eq":
-      case "lt_s":
-      case "gt_s":
-      case "le_s":
-      case "ge_s": {
-        checkType(insn.object);
-        const op = relOp.get(insn.id);
-        stackSize--;
-        commands.push(
-          "execute store result score #b masm run data get storage masm:__internal stack[-1]",
-          "data remove storage masm:__internal stack[-1]",
-          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
-          `execute store success storage masm:__internal stack[-1] int 1 if score #a masm ${op} #b masm`
-        );
+      case "i32.lt_s":
+        stackSize = srelop("<", commands, stackSize);
         break;
-      }
-      case "lt_u":
-      case "gt_u":
-      case "le_u":
-      case "ge_u": {
-        checkType(insn.object);
-        const op = relOp.get(insn.id);
-        stackSize--;
-        commands.push(
-          "execute store result score #b masm run data get storage masm:__internal stack[-1]",
-          "data remove storage masm:__internal stack[-1]",
-          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
-          "scoreboard players operation #a masm += 2^31 masm",
-          "scoreboard players operation #b masm += 2^31 masm",
-          `execute store success storage masm:__internal stack[-1] int 1 if score #a masm ${op} #b masm`
-        );
+      case "i32.gt_s":
+        stackSize = srelop(">", commands, stackSize);
         break;
-      }
-      case "clz":
-      case "ctz":
-      case "popcnt":
-        checkType(insn.object);
-        commands.push(
-          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
-          `function masm:__internal/${insn.id}`,
-          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #b masm"
-        );
+      case "i32.le_s":
+        stackSize = srelop("<=", commands, stackSize);
         break;
-      case "add":
-      case "sub":
-      case "mul": {
-        checkType(insn.object);
-        const op = binOp.get(insn.id);
-        stackSize--;
-        commands.push(
-          "execute store result score #b masm run data get storage masm:__internal stack[-1]",
-          "data remove storage masm:__internal stack[-1]",
-          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
-          `scoreboard players operation #a masm ${op} #b masm`,
-          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #a masm"
-        );
+      case "i32.ge_s":
+        stackSize = srelop(">=", commands, stackSize);
         break;
-      }
-      case "div_s":
-      case "div_u":
-      case "rem_s":
-      case "rem_u":
-      case "and":
-      case "or":
-      case "xor":
-        checkType(insn.object);
-        stackSize--;
-        commands.push(
-          "execute store result score #b masm run data get storage masm:__internal stack[-1]",
-          "data remove storage masm:__internal stack[-1]",
-          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
-          `function masm:__internal/${insn.id}`,
-          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #c masm"
-        );
+      case "i32.lt_u":
+        stackSize = urelop("<", commands, stackSize);
         break;
-      case "shl":
-      case "shr_s":
-      case "shr_u":
-      case "rotl":
-      case "rotr":
-        checkType(insn.object);
-        stackSize--;
-        commands.push(
-          "execute store result score #b masm run data get storage masm:__internal stack[-1]",
-          "data remove storage masm:__internal stack[-1]",
-          "execute store result score #a masm run data get storage masm:__internal stack[-1]",
-          `function masm:__internal/${insn.id}`,
-          "execute store result storage masm:__internal stack[-1] int 1 run scoreboard players get #a masm"
-        );
+      case "i32.gt_u":
+        stackSize = urelop(">", commands, stackSize);
         break;
-      case "end":
+      case "i32.le_u":
+        stackSize = urelop("<=", commands, stackSize);
         break;
-      case "local":
-        for (const type of insn.args) {
-          checkType(type.name);
-          commands.push("data modify storage masm:__internal frames[-1] append value 0");
-        }
+      case "i32.ge_u":
+        stackSize = urelop(">=", commands, stackSize);
+        break;
+      case "i32.clz":
+        iunop("clz", commands);
+        break;
+      case "i32.ctz":
+        iunop("ctz", commands);
+        break;
+      case "i32.popcnt":
+        iunop("popcnt", commands);
+        break;
+      case "i32.add":
+        stackSize = ibinops("+=", commands, stackSize);
+        break;
+      case "i32.sub":
+        stackSize = ibinops("-=", commands, stackSize);
+        break;
+      case "i32.mul":
+        stackSize = ibinops("*=", commands, stackSize);
+        break;
+      case "i32.div_s":
+        stackSize = ibinop("div_s", "c", commands, stackSize);
+        break;
+      case "i32.div_u":
+        stackSize = ibinop("div_u", "c", commands, stackSize);
+        break;
+      case "i32.rem_s":
+        stackSize = ibinop("rem_s", "c", commands, stackSize);
+        break;
+      case "i32.rem_u":
+        stackSize = ibinop("rem_u", "c", commands, stackSize);
+        break;
+      case "i32.and":
+        stackSize = ibinop("and", "c", commands, stackSize);
+        break;
+      case "i32.or":
+        stackSize = ibinop("or", "c", commands, stackSize);
+        break;
+      case "i32.xor":
+        stackSize = ibinop("xor", "c", commands, stackSize);
+        break;
+      case "i32.shl":
+        stackSize = ibinop("shl", "a", commands, stackSize);
+        break;
+      case "i32.shr_s":
+        stackSize = ibinop("shr_s", "a", commands, stackSize);
+        break;
+      case "i32.shr_u":
+        stackSize = ibinop("shr_u", "a", commands, stackSize);
+        break;
+      case "i32.rotl":
+        stackSize = ibinop("rotl", "a", commands, stackSize);
+        break;
+      case "i32.rotr":
+        stackSize = ibinop("rotr", "a", commands, stackSize);
         break;
       default:
-        throw new Error(`instruction '${insn.id}' is unsupported`);
+        throw new Error(`unsupported instruction '${instr.type}'`);
     }
   }
   labels.pop();
   return minDepth;
 }
 
-export function addInsns(ctx: Context, commands: string[], insns: any[], resultCount: number): void {
-  addBlock(ctx, commands, insns, 0, 0, resultCount, []);
+export function addInstrs(ctx: Context, commands: string[], instrs: Instr[], resultCount: number): void {
+  addBlock(ctx, commands, instrs, 0, 0, resultCount, []);
 }
