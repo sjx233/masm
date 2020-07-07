@@ -1,3 +1,5 @@
+import autobind from "class-autobind";
+
 export type ValType = "i32" | "i64" | "f32" | "f64";
 export type ResultType = ValType[];
 
@@ -307,109 +309,114 @@ export class ParseError extends SyntaxError {
 
 ParseError.prototype.name = ParseError.name;
 
-export function parse(wasm: ArrayBuffer): Module {
-  const buf = Buffer.from(wasm);
-  let offset = 0;
+class Parser {
+  private readonly buf: Buffer;
+  private offset = 0;
 
-  function also<T>(r: T, b: () => void): T {
+  constructor(buf: ArrayBuffer) {
+    this.buf = Buffer.from(buf);
+    autobind(this);
+  }
+
+  public also<T>(r: T, b: () => void): T {
     b();
     return r;
   }
 
-  function iterate<T>(b: () => T | null): T[] {
+  public iterate<T>(b: () => T | null): T[] {
     const result: T[] = [];
     for (let i; (i = b()) !== null;)
       result.push(i);
     return result;
   }
 
-  function sized<T>(b: () => T): (size: number) => T {
+  public sized<T>(b: () => T): (size: number) => T {
     return size => {
-      const end = offset + size;
+      const end = this.offset + size;
       const result = b();
-      if (offset !== end) throw new ParseError(offset, "size mismatch");
+      if (this.offset !== end) throw new ParseError(this.offset, "size mismatch");
       return result;
     };
   }
 
-  function vec<T>(b: () => T): T[] {
-    return Array.from({ length: u32() }, b);
+  public vec<T>(b: () => T): T[] {
+    return Array.from({ length: this.u32() }, b);
   }
 
-  function bytevec(): Uint8Array {
-    const n = u32();
-    const result = Uint8Array.prototype.slice.call(buf, offset, offset + n);
-    offset += n;
+  public bytevec(): Uint8Array {
+    const n = this.u32();
+    const result = Uint8Array.prototype.slice.call(this.buf, this.offset, this.offset + n);
+    this.offset += n;
     return result;
   }
 
-  function byte(): number {
-    return buf.readUInt8(offset++);
+  public byte(): number {
+    return this.buf.readUInt8(this.offset++);
   }
 
-  function leb128(size: number): bigint {
-    if (size <= 0) throw new ParseError(offset, "integer representation too long");
-    const n = byte();
+  public leb128(size: number): bigint {
+    if (size <= 0) throw new ParseError(this.offset, "integer representation too long");
+    const n = this.byte();
     return (n & 0x80) === 0
       ? BigInt(n)
-      : BigInt(n & 0x7f) + (leb128(size - 1) << 7n);
+      : BigInt(n & 0x7f) + (this.leb128(size - 1) << 7n);
   }
 
-  function uN(n: number): bigint {
-    const result = leb128(Math.ceil(n / 7));
-    if (result >= 1n << BigInt(n)) throw new ParseError(offset - 1, "integer too large");
+  public u(n: number): bigint {
+    const result = this.leb128(Math.ceil(n / 7));
+    if (result >= 1n << BigInt(n)) throw new ParseError(this.offset - 1, "integer too large");
     return result;
   }
 
-  function sN(n: number): bigint {
+  public s(n: number): bigint {
     const size = Math.ceil(n / 7);
-    const result = BigInt.asIntN(size * 7, leb128(size));
+    const result = BigInt.asIntN(size * 7, this.leb128(size));
     const limit = 1n << BigInt(n - 1);
-    if (result >= limit || result < -limit) throw new ParseError(offset - 1, "integer too large");
+    if (result >= limit || result < -limit) throw new ParseError(this.offset - 1, "integer too large");
     return result;
   }
 
-  function u32(): number {
-    return Number(uN(32));
+  public u32(): number {
+    return Number(this.u(32));
   }
 
-  function s7(): number {
-    return Number(sN(7));
+  public s7(): number {
+    return Number(this.s(7));
   }
 
-  function s32(): number {
-    return Number(sN(32));
+  public s32(): number {
+    return Number(this.s(32));
   }
 
-  function s33(): number {
-    return Number(sN(33));
+  public s33(): number {
+    return Number(this.s(33));
   }
 
-  function s64(): bigint {
-    return sN(64);
+  public s64(): bigint {
+    return this.s(64);
   }
 
-  function f32(): number {
-    const result = buf.readFloatLE(offset);
-    offset += 4;
+  public f32(): number {
+    const result = this.buf.readFloatLE(this.offset);
+    this.offset += 4;
     return result;
   }
 
-  function f64(): number {
-    const result = buf.readDoubleLE(offset);
-    offset += 8;
+  public f64(): number {
+    const result = this.buf.readDoubleLE(this.offset);
+    this.offset += 8;
     return result;
   }
 
-  function name(): string {
-    const n = u32();
-    const result = buf.toString("utf8", offset, offset + n);
-    offset += n;
+  public name(): string {
+    const n = this.u32();
+    const result = this.buf.toString("utf8", this.offset, this.offset + n);
+    this.offset += n;
     return result;
   }
 
-  function valtype(): ValType {
-    switch (s7()) {
+  public valtype(): ValType {
+    switch (this.s7()) {
       case -1:
         return "i32";
       case -2:
@@ -419,186 +426,186 @@ export function parse(wasm: ArrayBuffer): Module {
       case -4:
         return "f64";
       default:
-        throw new ParseError(offset - 1, "malformed value type");
+        throw new ParseError(this.offset - 1, "malformed value type");
     }
   }
 
-  function resulttype(): ResultType {
-    return vec(valtype);
+  public resulttype(): ResultType {
+    return this.vec(this.valtype);
   }
 
-  function functype(): FuncType {
-    switch (s7()) {
+  public functype(): FuncType {
+    switch (this.s7()) {
       case -0x20:
-        return { params: resulttype(), results: resulttype() };
+        return { params: this.resulttype(), results: this.resulttype() };
       default:
-        throw new ParseError(offset - 1, "malformed function type");
+        throw new ParseError(this.offset - 1, "malformed function type");
     }
   }
 
-  function limits(): Limits {
-    switch (byte()) {
+  public limits(): Limits {
+    switch (this.byte()) {
       case 0:
-        return { min: u32() };
+        return { min: this.u32() };
       case 1:
-        return { min: u32(), max: u32() };
+        return { min: this.u32(), max: this.u32() };
       default:
-        throw new ParseError(offset - 1, "malformed limits");
+        throw new ParseError(this.offset - 1, "malformed limits");
     }
   }
 
-  function memtype(): MemType {
-    return limits();
+  public memtype(): MemType {
+    return this.limits();
   }
 
-  function tabletype(): TableType {
+  public tabletype(): TableType {
     return {
-      elemType: elemtype(),
-      limits: limits()
+      elemType: this.elemtype(),
+      limits: this.limits()
     };
   }
 
-  function elemtype(): ElemType {
-    switch (s7()) {
+  public elemtype(): ElemType {
+    switch (this.s7()) {
       case -0x10:
         return "funcref";
       default:
-        throw new ParseError(offset - 1, "malformed element type");
+        throw new ParseError(this.offset - 1, "malformed element type");
     }
   }
 
-  function globaltype(): GlobalType {
-    const type = valtype();
-    switch (byte()) {
+  public globaltype(): GlobalType {
+    const type = this.valtype();
+    switch (this.byte()) {
       case 0:
         return { mut: "const", valType: type };
       case 1:
         return { mut: "var", valType: type };
       default:
-        throw new ParseError(offset - 1, "malformed global type");
+        throw new ParseError(this.offset - 1, "malformed global type");
     }
   }
 
-  function blocktype(): BlockType {
-    const b = byte();
+  public blocktype(): BlockType {
+    const b = this.byte();
     if (b === 0x40) return null;
-    const start = --offset;
-    if ((b & 0xc0) === 0x40) return valtype();
-    const t = s33();
+    const start = --this.offset;
+    if ((b & 0xc0) === 0x40) return this.valtype();
+    const t = this.s33();
     if (t < 0) throw new ParseError(start, "nonnegative type index expected");
     return t;
   }
 
-  function memarg(): MemArg {
-    return { align: u32(), offset: u32() };
+  public memarg(): MemArg {
+    return { align: this.u32(), offset: this.u32() };
   }
 
-  function instr(): Instr | null {
-    switch (buf[offset++]) {
+  public instr(): Instr | null {
+    switch (this.buf[this.offset++]) {
       case 0x00:
         return { type: "unreachable" };
       case 0x01:
         return { type: "nop" };
       case 0x02:
-        return also({ type: "block", blockType: blocktype(), body: iterate(instr) }, end);
+        return this.also({ type: "block", blockType: this.blocktype(), body: this.iterate(this.instr) }, this.end);
       case 0x03:
-        return also({ type: "loop", blockType: blocktype(), body: iterate(instr) }, end);
+        return this.also({ type: "loop", blockType: this.blocktype(), body: this.iterate(this.instr) }, this.end);
       case 0x04: {
-        const blockType = blocktype();
-        const consequent = iterate(instr);
-        switch (byte()) {
+        const blockType = this.blocktype();
+        const consequent = this.iterate(this.instr);
+        switch (this.byte()) {
           case 0x05:
-            return { type: "if", blockType, consequent, alternative: iterate(instr) };
+            return { type: "if", blockType, consequent, alternative: this.iterate(this.instr) };
           case 0x0b:
             return { type: "if", blockType, consequent, alternative: [] };
           default:
-            throw new ParseError(offset - 1, "else or end opcode expected");
+            throw new ParseError(this.offset - 1, "else or end opcode expected");
         }
       }
       case 0x0c:
-        return { type: "br", label: labelidx() };
+        return { type: "br", label: this.labelidx() };
       case 0x0d:
-        return { type: "br_if", label: labelidx() };
+        return { type: "br_if", label: this.labelidx() };
       case 0x0e:
-        return { type: "br_table", labels: vec(labelidx), default: labelidx() };
+        return { type: "br_table", labels: this.vec(this.labelidx), default: this.labelidx() };
       case 0x0f:
         return { type: "return" };
       case 0x10:
-        return { type: "call", func: funcidx() };
+        return { type: "call", func: this.funcidx() };
       case 0x11:
-        return { type: "call_indirect", funcType: typeidx(), table: tableidx() };
+        return { type: "call_indirect", funcType: this.typeidx(), table: this.tableidx() };
       case 0x1a:
         return { type: "drop" };
       case 0x1b:
         return { type: "select" };
       case 0x20:
-        return { type: "local.get", local: localidx() };
+        return { type: "local.get", local: this.localidx() };
       case 0x21:
-        return { type: "local.set", local: localidx() };
+        return { type: "local.set", local: this.localidx() };
       case 0x22:
-        return { type: "local.tee", local: localidx() };
+        return { type: "local.tee", local: this.localidx() };
       case 0x23:
-        return { type: "global.get", global: globalidx() };
+        return { type: "global.get", global: this.globalidx() };
       case 0x24:
-        return { type: "global.set", global: globalidx() };
+        return { type: "global.set", global: this.globalidx() };
       case 0x28:
-        return { type: "i32.load", mem: memarg() };
+        return { type: "i32.load", mem: this.memarg() };
       case 0x29:
-        return { type: "i64.load", mem: memarg() };
+        return { type: "i64.load", mem: this.memarg() };
       case 0x2a:
-        return { type: "f32.load", mem: memarg() };
+        return { type: "f32.load", mem: this.memarg() };
       case 0x2b:
-        return { type: "f64.load", mem: memarg() };
+        return { type: "f64.load", mem: this.memarg() };
       case 0x2c:
-        return { type: "i32.load8_s", mem: memarg() };
+        return { type: "i32.load8_s", mem: this.memarg() };
       case 0x2d:
-        return { type: "i32.load8_u", mem: memarg() };
+        return { type: "i32.load8_u", mem: this.memarg() };
       case 0x2e:
-        return { type: "i32.load16_s", mem: memarg() };
+        return { type: "i32.load16_s", mem: this.memarg() };
       case 0x2f:
-        return { type: "i32.load16_u", mem: memarg() };
+        return { type: "i32.load16_u", mem: this.memarg() };
       case 0x30:
-        return { type: "i64.load8_s", mem: memarg() };
+        return { type: "i64.load8_s", mem: this.memarg() };
       case 0x31:
-        return { type: "i64.load8_u", mem: memarg() };
+        return { type: "i64.load8_u", mem: this.memarg() };
       case 0x32:
-        return { type: "i64.load16_s", mem: memarg() };
+        return { type: "i64.load16_s", mem: this.memarg() };
       case 0x33:
-        return { type: "i64.load16_u", mem: memarg() };
+        return { type: "i64.load16_u", mem: this.memarg() };
       case 0x34:
-        return { type: "i64.load32_s", mem: memarg() };
+        return { type: "i64.load32_s", mem: this.memarg() };
       case 0x35:
-        return { type: "i64.load32_u", mem: memarg() };
+        return { type: "i64.load32_u", mem: this.memarg() };
       case 0x36:
-        return { type: "i32.store", mem: memarg() };
+        return { type: "i32.store", mem: this.memarg() };
       case 0x37:
-        return { type: "i64.store", mem: memarg() };
+        return { type: "i64.store", mem: this.memarg() };
       case 0x38:
-        return { type: "f32.store", mem: memarg() };
+        return { type: "f32.store", mem: this.memarg() };
       case 0x39:
-        return { type: "f64.store", mem: memarg() };
+        return { type: "f64.store", mem: this.memarg() };
       case 0x3a:
-        return { type: "i32.store8", mem: memarg() };
+        return { type: "i32.store8", mem: this.memarg() };
       case 0x3b:
-        return { type: "i32.store16", mem: memarg() };
+        return { type: "i32.store16", mem: this.memarg() };
       case 0x3c:
-        return { type: "i64.store8", mem: memarg() };
+        return { type: "i64.store8", mem: this.memarg() };
       case 0x3d:
-        return { type: "i64.store16", mem: memarg() };
+        return { type: "i64.store16", mem: this.memarg() };
       case 0x3e:
-        return { type: "i64.store32", mem: memarg() };
+        return { type: "i64.store32", mem: this.memarg() };
       case 0x3f:
-        return { type: "mem.size", mem: memidx() };
+        return { type: "mem.size", mem: this.memidx() };
       case 0x40:
-        return { type: "mem.grow", mem: memidx() };
+        return { type: "mem.grow", mem: this.memidx() };
       case 0x41:
-        return { type: "i32.const", value: s32() };
+        return { type: "i32.const", value: this.s32() };
       case 0x42:
-        return { type: "i64.const", value: s64() };
+        return { type: "i64.const", value: this.s64() };
       case 0x43:
-        return { type: "f32.const", value: f32() };
+        return { type: "f32.const", value: this.f32() };
       case 0x44:
-        return { type: "f64.const", value: f64() };
+        return { type: "f64.const", value: this.f64() };
       case 0x45:
         return { type: "i32.eqz" };
       case 0x46:
@@ -856,7 +863,7 @@ export function parse(wasm: ArrayBuffer): Module {
       case 0xc4:
         return { type: "i64.extend32_s" };
       case 0xfc:
-        switch (buf[offset++]) {
+        switch (this.buf[this.offset++]) {
           case 0x00:
             return { type: "i32.trunc_sat_f32_s" };
           case 0x01:
@@ -874,242 +881,242 @@ export function parse(wasm: ArrayBuffer): Module {
           case 0x07:
             return { type: "i32.trunc_sat_f32_s" };
           default:
-            offset--;
+            this.offset--;
             break;
         }
         // fallthrough
       default:
-        offset--;
+        this.offset--;
         return null;
     }
   }
 
-  function end(): void {
-    if (byte() !== 0x0b) throw new ParseError(offset - 1, "end opcode expected");
+  public end(): void {
+    if (this.byte() !== 0x0b) throw new ParseError(this.offset - 1, "end opcode expected");
   }
 
-  function expr(): Expr {
-    return also(iterate(instr), end);
+  public expr(): Expr {
+    return this.also(this.iterate(this.instr), this.end);
   }
 
-  function typeidx(): TypeIdx {
-    return u32();
+  public typeidx(): TypeIdx {
+    return this.u32();
   }
 
-  function funcidx(): FuncIdx {
-    return u32();
+  public funcidx(): FuncIdx {
+    return this.u32();
   }
 
-  function tableidx(): TableIdx {
-    return u32();
+  public tableidx(): TableIdx {
+    return this.u32();
   }
 
-  function memidx(): MemIdx {
-    return u32();
+  public memidx(): MemIdx {
+    return this.u32();
   }
 
-  function globalidx(): GlobalIdx {
-    return u32();
+  public globalidx(): GlobalIdx {
+    return this.u32();
   }
 
-  function localidx(): LocalIdx {
-    return u32();
+  public localidx(): LocalIdx {
+    return this.u32();
   }
 
-  function labelidx(): LabelIdx {
-    return u32();
+  public labelidx(): LabelIdx {
+    return this.u32();
   }
 
-  function section<T>(n: number, b: (size: number) => T): T | null {
-    if (buf[offset] !== n) return null;
-    offset++;
-    return b(u32());
+  public section<T>(n: number, b: (size: number) => T): T | null {
+    if (this.buf[this.offset] !== n) return null;
+    this.offset++;
+    return b(this.u32());
   }
 
-  function customsec(): void | null {
-    return section(0, custom);
+  public customsec(): void | null {
+    return this.section(0, this.custom);
   }
 
-  function custom(size: number): void {
-    const end = offset + size;
-    name();
-    if (offset > end) throw new ParseError(offset, "name of custom section too long");
-    offset = end;
+  public custom(size: number): void {
+    const end = this.offset + size;
+    this.name();
+    if (this.offset > end) throw new ParseError(this.offset, "name of custom section too long");
+    this.offset = end;
   }
 
-  function typesec(): FuncType[] {
-    return section(1, sized(() => vec(functype))) || [];
+  public typesec(): FuncType[] {
+    return this.section(1, this.sized(() => this.vec(this.functype))) || [];
   }
 
-  function importsec(): Import[] {
-    return section(2, sized(() => vec(import_))) || [];
+  public importsec(): Import[] {
+    return this.section(2, this.sized(() => this.vec(this.import_))) || [];
   }
 
-  function import_(): Import {
+  public import_(): Import {
     return {
-      module: name(),
-      name: name(),
-      desc: importdesc()
+      module: this.name(),
+      name: this.name(),
+      desc: this.importdesc()
     };
   }
 
-  function importdesc(): ImportDesc {
-    switch (byte()) {
+  public importdesc(): ImportDesc {
+    switch (this.byte()) {
       case 0:
-        return { type: "func", funcType: typeidx() };
+        return { type: "func", funcType: this.typeidx() };
       case 1:
-        return { type: "table", tableType: tabletype() };
+        return { type: "table", tableType: this.tabletype() };
       case 2:
-        return { type: "mem", memType: memtype() };
+        return { type: "mem", memType: this.memtype() };
       case 3:
-        return { type: "global", globalType: globaltype() };
+        return { type: "global", globalType: this.globaltype() };
       default:
-        throw new ParseError(offset - 1, "malformed import descriptor");
+        throw new ParseError(this.offset - 1, "malformed import descriptor");
     }
   }
 
-  function funcsec(): TypeIdx[] {
-    return section(3, sized(() => vec(typeidx))) || [];
+  public funcsec(): TypeIdx[] {
+    return this.section(3, this.sized(() => this.vec(this.typeidx))) || [];
   }
 
-  function tablesec(): Table[] {
-    return section(4, sized(() => vec(table))) || [];
+  public tablesec(): Table[] {
+    return this.section(4, this.sized(() => this.vec(this.table))) || [];
   }
 
-  function table(): Table {
-    return { type: tabletype() };
+  public table(): Table {
+    return { type: this.tabletype() };
   }
 
-  function memsec(): Mem[] {
-    return section(5, sized(() => vec(mem))) || [];
+  public memsec(): Mem[] {
+    return this.section(5, this.sized(() => this.vec(this.mem))) || [];
   }
 
-  function mem(): Mem {
-    return { type: memtype() };
+  public mem(): Mem {
+    return { type: this.memtype() };
   }
 
-  function globalsec(): Global[] {
-    return section(6, sized(() => vec(global))) || [];
+  public globalsec(): Global[] {
+    return this.section(6, this.sized(() => this.vec(this.global))) || [];
   }
 
-  function global(): Global {
-    return { type: globaltype(), init: expr() };
+  public global(): Global {
+    return { type: this.globaltype(), init: this.expr() };
   }
 
-  function exportsec(): Export[] {
-    return section(7, sized(() => vec(export_))) || [];
+  public exportsec(): Export[] {
+    return this.section(7, this.sized(() => this.vec(this.export_))) || [];
   }
 
-  function export_(): Export {
+  public export_(): Export {
     return {
-      name: name(),
-      desc: exportdesc()
+      name: this.name(),
+      desc: this.exportdesc()
     };
   }
 
-  function exportdesc(): ExportDesc {
-    switch (byte()) {
+  public exportdesc(): ExportDesc {
+    switch (this.byte()) {
       case 0:
-        return { type: "func", func: funcidx() };
+        return { type: "func", func: this.funcidx() };
       case 1:
-        return { type: "table", table: tableidx() };
+        return { type: "table", table: this.tableidx() };
       case 2:
-        return { type: "mem", mem: memidx() };
+        return { type: "mem", mem: this.memidx() };
       case 3:
-        return { type: "global", global: globalidx() };
+        return { type: "global", global: this.globalidx() };
       default:
-        throw new ParseError(offset - 1, "malformed export descriptor");
+        throw new ParseError(this.offset - 1, "malformed export descriptor");
     }
   }
 
-  function startsec(): Start | null {
-    return section(8, sized(start));
+  public startsec(): Start | null {
+    return this.section(8, this.sized(this.start));
   }
 
-  function start(): Start {
-    return { func: funcidx() };
+  public start(): Start {
+    return { func: this.funcidx() };
   }
 
-  function elemsec(): Elem[] {
-    return section(9, sized(() => vec(elem))) || [];
+  public elemsec(): Elem[] {
+    return this.section(9, this.sized(() => this.vec(this.elem))) || [];
   }
 
-  function elem(): Elem {
+  public elem(): Elem {
     return {
-      table: tableidx(),
-      offset: expr(),
-      init: vec(funcidx)
+      table: this.tableidx(),
+      offset: this.expr(),
+      init: this.vec(this.funcidx)
     };
   }
 
-  function codesec(): { locals: ValType[]; body: Expr; }[] {
-    return section(10, sized(() => vec(code))) || [];
+  public codesec(): { locals: ValType[]; body: Expr; }[] {
+    return this.section(10, this.sized(() => this.vec(this.code))) || [];
   }
 
-  function code(): { locals: ValType[]; body: Expr; } {
-    return sized(func)(u32());
+  public code(): { locals: ValType[]; body: Expr; } {
+    return this.sized(this.func)(this.u32());
   }
 
-  function func(): { locals: ValType[]; body: Expr; } {
-    return { locals: vec(locals).flat(), body: expr() };
+  public func(): { locals: ValType[]; body: Expr; } {
+    return { locals: this.vec(this.locals).flat(), body: this.expr() };
   }
 
-  function locals(): ValType[] {
-    const n = u32();
-    const t = valtype();
+  public locals(): ValType[] {
+    const n = this.u32();
+    const t = this.valtype();
     return Array.from({ length: n }, () => t);
   }
 
-  function datasec(): Data[] {
-    return section(11, sized(() => vec(data))) || [];
+  public datasec(): Data[] {
+    return this.section(11, this.sized(() => this.vec(this.data))) || [];
   }
 
-  function data(): Data {
+  public data(): Data {
     return {
-      data: memidx(),
-      offset: expr(),
-      init: bytevec()
+      data: this.memidx(),
+      offset: this.expr(),
+      init: this.bytevec()
     };
   }
 
-  function magic(): void {
-    if (buf.readUInt32BE(offset) !== 0x61736d) throw new ParseError(offset, "malformed magic header");
-    offset += 4;
+  public magic(): void {
+    if (this.buf.readUInt32BE(this.offset) !== 0x61736d) throw new ParseError(this.offset, "malformed magic header");
+    this.offset += 4;
   }
 
-  function version(): void {
-    if (buf.readUInt32LE(offset) !== 1) throw new ParseError(offset, `unsupported version ${buf.readUInt32LE(offset)}`);
-    offset += 4;
+  public version(): void {
+    if (this.buf.readUInt32LE(this.offset) !== 1) throw new ParseError(this.offset, `unsupported version ${this.buf.readUInt32LE(this.offset)}`);
+    this.offset += 4;
   }
 
-  function module(): Module {
-    magic();
-    version();
-    iterate(customsec);
-    const functype = typesec();
-    iterate(customsec);
-    const import_ = importsec();
-    iterate(customsec);
-    const typeidx = funcsec();
-    iterate(customsec);
-    const table = tablesec();
-    iterate(customsec);
-    const mem = memsec();
-    iterate(customsec);
-    const global = globalsec();
-    iterate(customsec);
-    const export_ = exportsec();
-    iterate(customsec);
-    const start = startsec();
-    iterate(customsec);
-    const elem = elemsec();
-    iterate(customsec);
-    const code = codesec();
-    iterate(customsec);
-    const data = datasec();
-    iterate(customsec);
-    if (offset !== buf.length) throw new ParseError(offset, "junk after last section");
-    if (typeidx.length !== code.length) throw new ParseError(offset, "function and code sections have inconsistent lengths");
+  public module(): Module {
+    this.magic();
+    this.version();
+    this.iterate(this.customsec);
+    const functype = this.typesec();
+    this.iterate(this.customsec);
+    const import_ = this.importsec();
+    this.iterate(this.customsec);
+    const typeidx = this.funcsec();
+    this.iterate(this.customsec);
+    const table = this.tablesec();
+    this.iterate(this.customsec);
+    const mem = this.memsec();
+    this.iterate(this.customsec);
+    const global = this.globalsec();
+    this.iterate(this.customsec);
+    const export_ = this.exportsec();
+    this.iterate(this.customsec);
+    const start = this.startsec();
+    this.iterate(this.customsec);
+    const elem = this.elemsec();
+    this.iterate(this.customsec);
+    const code = this.codesec();
+    this.iterate(this.customsec);
+    const data = this.datasec();
+    this.iterate(this.customsec);
+    if (this.offset !== this.buf.length) throw new ParseError(this.offset, "junk after last section");
+    if (typeidx.length !== code.length) throw new ParseError(this.offset, "function and code sections have inconsistent lengths");
     return {
       types: functype,
       funcs: code.map(({ locals, body }, i) => ({ type: typeidx[i], locals, body })),
@@ -1123,6 +1130,8 @@ export function parse(wasm: ArrayBuffer): Module {
       exports: export_
     };
   }
+}
 
-  return module();
+export function parse(wasm: ArrayBuffer): Module {
+  return new Parser(wasm).module();
 }
