@@ -18,7 +18,7 @@
   "scripts": {
     "lint": "eslint --ext .js,.ts src",
     "build": "tsc",
-    "test": "node lib/test/test.js",
+    "test": "node -r dotenv/config lib/test/test.js",
     "preversion": "npm run build && npm test",
     "postversion": "git push && git push --tags"
   },
@@ -33,6 +33,7 @@
     "@typescript-eslint/parser": "^3.6.0",
     "ansi-colors": "^4.1.1",
     "class-autobind": "^0.1.4",
+    "dotenv": "^8.2.0",
     "eslint": "^7.4.0",
     "rcon-client": "^4.2.0",
     "typescript": "^3.9.6"

@@ -2,6 +2,7 @@ import { bold, gray, green, red } from "ansi-colors";
 import { execFile as execFileAsync } from "child_process";
 import { promises as fs } from "fs";
 import { DataPack } from "minecraft-packs";
+import * as os from "os";
 import * as path from "path";
 import { Rcon, RconOptions } from "rcon-client";
 import { isDeepStrictEqual, promisify } from "util";
@@ -21,6 +22,7 @@ const worldPath = path.resolve(process.env.WORLD_PATH);
 
 interface Context {
   rcon: Rcon;
+  testDir: string;
   loadedModule: string | undefined;
   lastModule: string | undefined;
   modules: Set<string>;
@@ -172,9 +174,9 @@ async function loadModule(ctx: Context, module: string): Promise<string | undefi
   const { rcon } = ctx;
   const pack = new DataPack("masm test.");
   try {
-    compileTo(pack, "masm_test", await fs.readFile(module));
+    compileTo(pack, "masm_test", await fs.readFile(path.join(ctx.testDir, module)));
     for (const [registration, namespace] of ctx.registeredModules)
-      compileTo(pack, namespace, await fs.readFile(registration));
+      compileTo(pack, namespace, await fs.readFile(path.join(ctx.testDir, registration)));
   } catch (e) {
     const message = `failed to instantiate ${bold(path.basename(module))}: ${e}`;
     ctx.invalidModules.set(module, message);
@@ -244,15 +246,16 @@ async function runCommand(ctx: Context, command: Command): Promise<Result | unde
 }
 
 (async () => {
-  process.chdir(path.resolve(__dirname, "../../test"));
+  const testDir = await fs.mkdtemp(path.join(os.tmpdir(), "masm-test-"));
   const filenames = process.argv.slice(2);
-  const tests = await compileTests("../testsuite", ".", filenames.length ? filenames : undefined);
+  const tests = await compileTests("testsuite", testDir, filenames.length ? filenames : undefined);
   const ctx: Context = {
     rcon: await (() => {
       const options: RconOptions = { host, password, timeout: 300000 };
       if (port) options.port = port;
       return Rcon.connect(options);
     })(),
+    testDir,
     loadedModule: undefined,
     lastModule: undefined,
     modules: new Set,
@@ -265,7 +268,7 @@ async function runCommand(ctx: Context, command: Command): Promise<Result | unde
   await ctx.rcon.send("reload");
   await ctx.rcon.send("function masm:__init");
   for (const test of tests) {
-    const { source_filename: src, commands }: WasmScript = JSON.parse(await fs.readFile(test, "utf8"));
+    const { source_filename: src, commands }: WasmScript = JSON.parse(await fs.readFile(path.join(testDir, test), "utf8"));
     process.stdout.write(`${path.basename(src)}\n`);
     let successCount = 0;
     let failureCount = 0;
