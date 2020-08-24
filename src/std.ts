@@ -1,11 +1,12 @@
-import { DataPack, Pack } from "minecraft-packs";
+import { DataPack } from "minecraft-packs";
 import * as path from "path";
 import { pageSize } from ".";
 import { buildTree } from "./util";
 import ResourceLocation = require("resource-location");
 
 export async function genStd(): Promise<DataPack> {
-  const pack = await Pack.read(path.resolve(__dirname, "../std"), "data") as DataPack;
+  const pack = new DataPack;
+  pack.read(path.resolve(__dirname, "../std"));
   pack.functions
     .set(new ResourceLocation("masm", "__internal/mem/get"), [
       `function ${buildTree({
