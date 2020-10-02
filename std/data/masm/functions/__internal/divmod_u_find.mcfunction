@@ -1,4 +1,4 @@
-# https://github.com/gcc-mirror/gcc/blob/705510a708d3642c9c962beb663c476167e4e8a4/libgcc/config/riscv/div.S#L80-L84
+# https://github.com/gcc-mirror/gcc/blob/4013baf99c38f7bca06a51f8301e8fb195ccfa33/libgcc/config/riscv/div.S#L80-L84
 scoreboard players operation #r2 masm += #r2 masm
 scoreboard players operation #r3 masm += #r3 masm
 scoreboard players operation #a masm = #r2 masm
