@@ -1064,7 +1064,7 @@ class Parser {
   public locals(): ValType[] {
     const n = this.u32();
     const t = this.valtype();
-    return Array.from({ length: n }, () => t);
+    return new Array<ValType>(n).fill(t);
   }
 
   public datasec(): Data[] {
