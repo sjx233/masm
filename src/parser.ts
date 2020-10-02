@@ -77,8 +77,8 @@ export type Instr =
   | { type: "i64.store8"; mem: MemArg; }
   | { type: "i64.store16"; mem: MemArg; }
   | { type: "i64.store32"; mem: MemArg; }
-  | { type: "mem.size"; mem: MemIdx; }
-  | { type: "mem.grow"; mem: MemIdx; }
+  | { type: "memory.size"; mem: MemIdx; }
+  | { type: "memory.grow"; mem: MemIdx; }
   | { type: "i32.const"; value: number; }
   | { type: "i64.const"; value: bigint; }
   | { type: "f32.const"; value: number; }
@@ -516,7 +516,7 @@ class Parser {
         const consequent = this.iterate(this.instr);
         switch (this.byte()) {
           case 0x05:
-            return { type: "if", blockType, consequent, alternative: this.iterate(this.instr) };
+            return this.also({ type: "if", blockType, consequent, alternative: this.iterate(this.instr) }, this.end);
           case 0x0b:
             return { type: "if", blockType, consequent, alternative: [] };
           default:
@@ -596,9 +596,9 @@ class Parser {
       case 0x3e:
         return { type: "i64.store32", mem: this.memarg() };
       case 0x3f:
-        return { type: "mem.size", mem: this.memidx() };
+        return { type: "memory.size", mem: this.memidx() };
       case 0x40:
-        return { type: "mem.grow", mem: this.memidx() };
+        return { type: "memory.grow", mem: this.memidx() };
       case 0x41:
         return { type: "i32.const", value: this.s32() };
       case 0x42:

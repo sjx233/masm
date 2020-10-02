@@ -371,14 +371,15 @@ function addBlock(ctx: Context, commands: string[], instrs: Instr[], depth: numb
           `function ${namespace}:__internal/mems/0/set`
         );
         break;
-      // See MC-159633
-      // case "memory.size":
-      //   stackSize++;
-      //   commands.push(`function ${namespace}:__internal/mems/0/size`);
-      //   break;
-      // case "memory.grow":
-      //   commands.push(`function ${namespace}:__internal/mems/0/grow`);
-      //   break;
+      /* MC-159633
+      case "memory.size":
+        stackSize++;
+        commands.push(`function ${namespace}:__internal/mems/0/size`);
+        break;
+      case "memory.grow":
+        commands.push(`function ${namespace}:__internal/mems/0/grow`);
+        break;
+      */
       case "i32.const":
         stackSize++;
         commands.push(`data modify storage masm:__internal stack append value ${instr.value}`);
