@@ -501,7 +501,7 @@ class Parser {
   }
 
   public instr(): Instr | null {
-    const before = this.offset;
+    const start = this.offset;
     switch (this.byte()) {
       case 0x00:
         return { type: "unreachable" };
@@ -868,25 +868,25 @@ class Parser {
           case 0x00:
             return { type: "i32.trunc_sat_f32_s" };
           case 0x01:
-            return { type: "i32.trunc_sat_f32_s" };
+            return { type: "i32.trunc_sat_f32_u" };
           case 0x02:
-            return { type: "i32.trunc_sat_f32_s" };
+            return { type: "i32.trunc_sat_f64_s" };
           case 0x03:
-            return { type: "i32.trunc_sat_f32_s" };
+            return { type: "i32.trunc_sat_f64_u" };
           case 0x04:
-            return { type: "i32.trunc_sat_f32_s" };
+            return { type: "i64.trunc_sat_f32_s" };
           case 0x05:
-            return { type: "i32.trunc_sat_f32_s" };
+            return { type: "i64.trunc_sat_f32_u" };
           case 0x06:
-            return { type: "i32.trunc_sat_f32_s" };
+            return { type: "i64.trunc_sat_f64_s" };
           case 0x07:
-            return { type: "i32.trunc_sat_f32_s" };
+            return { type: "i64.trunc_sat_f64_u" };
           default:
             break;
         }
         // fallthrough
       default:
-        this.offset = before;
+        this.offset = start;
         return null;
     }
   }
